@@ -24,17 +24,62 @@ class BudgetMonitoringApp extends StatelessWidget {
   }
 }
 
-class BudgetHomePage extends StatelessWidget {
+class BudgetHomePage extends StatefulWidget {
   const BudgetHomePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Temporary values.
-    // We'll make these editable later.
-    const totalAllowance = 200000.0;
-    const totalSpent = 80000.0;
-    const remainingBudget = totalAllowance - totalSpent;
+  State<BudgetHomePage> createState() => _BudgetHomePageState();
+}
 
+class _BudgetHomePageState extends State<BudgetHomePage> {
+  static const double totalAllowance = 200000.0;
+
+  final List<Expense> expenses = [
+    Expense(
+      category: 'Food',
+      description: 'Ramen',
+      amount: 1200,
+      icon: Icons.restaurant,
+    ),
+    Expense(
+      category: 'Transportation',
+      description: 'Train',
+      amount: 500,
+      icon: Icons.train,
+    ),
+    Expense(
+      category: 'Shopping',
+      description: 'Convenience store',
+      amount: 2000,
+      icon: Icons.shopping_bag,
+    ),
+  ];
+
+  double get totalSpent {
+    return expenses.fold(0, (sum, expense) => sum + expense.amount);
+  }
+
+  double get remainingBudget {
+    return totalAllowance - totalSpent;
+  }
+
+  Future<void> _addExpense() async {
+    final result = await showDialog<Expense>(
+      context: context,
+      builder: (context) {
+        return const AddExpenseDialog();
+      },
+    );
+
+    if (result != null) {
+      setState(() {
+        expenses.add(result);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Budget Monitoring'),
@@ -71,9 +116,12 @@ class BudgetHomePage extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       '¥${remainingBudget.toStringAsFixed(0)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
+                        color: remainingBudget < 0
+                            ? Colors.red
+                            : null,
                       ),
                     ),
                   ],
@@ -113,37 +161,183 @@ class BudgetHomePage extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            const _ExpenseItem(
-              category: 'Food',
-              description: 'Ramen',
-              amount: 1200,
-              icon: Icons.restaurant,
-            ),
-
-            const _ExpenseItem(
-              category: 'Transportation',
-              description: 'Train',
-              amount: 500,
-              icon: Icons.train,
-            ),
-
-            const _ExpenseItem(
-              category: 'Shopping',
-              description: 'Convenience store',
-              amount: 2000,
-              icon: Icons.shopping_bag,
-            ),
+            if (expenses.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(
+                    child: Text(
+                      'No expenses recorded today.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                ),
+              )
+            else
+              ...expenses.map(
+                (expense) => _ExpenseItem(expense: expense),
+              ),
           ],
         ),
       ),
 
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // We'll implement Add Expense next.
-        },
+        onPressed: _addExpense,
         icon: const Icon(Icons.add),
         label: const Text('Add Expense'),
       ),
+    );
+  }
+}
+
+class Expense {
+  final String category;
+  final String description;
+  final double amount;
+  final IconData icon;
+
+  Expense({
+    required this.category,
+    required this.description,
+    required this.amount,
+    required this.icon,
+  });
+}
+
+class AddExpenseDialog extends StatefulWidget {
+  const AddExpenseDialog({super.key});
+
+  @override
+  State<AddExpenseDialog> createState() => _AddExpenseDialogState();
+}
+
+class _AddExpenseDialogState extends State<AddExpenseDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _descriptionController = TextEditingController();
+  final _amountController = TextEditingController();
+
+  String _selectedCategory = 'Food';
+
+  final Map<String, IconData> _categoryIcons = {
+    'Food': Icons.restaurant,
+    'Transportation': Icons.train,
+    'Shopping': Icons.shopping_bag,
+    'Accommodation': Icons.hotel,
+    'Other': Icons.more_horiz,
+  };
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  void _saveExpense() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final amount = double.parse(_amountController.text);
+
+    final expense = Expense(
+      category: _selectedCategory,
+      description: _descriptionController.text.trim(),
+      amount: amount,
+      icon: _categoryIcons[_selectedCategory]!,
+    );
+
+    Navigator.of(context).pop(expense);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add Expense'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  hintText: 'e.g. Lunch',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Enter a description';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Amount',
+                  prefixText: '¥ ',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Enter an amount';
+                  }
+
+                  final amount = double.tryParse(value);
+
+                  if (amount == null || amount <= 0) {
+                    return 'Enter a valid amount';
+                  }
+
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              DropdownButtonFormField<String>(
+                initialValue: _selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  border: OutlineInputBorder(),
+                ),
+                items: _categoryIcons.keys.map((category) {
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Text(category),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedCategory = value;
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saveExpense,
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 }
@@ -187,16 +381,10 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _ExpenseItem extends StatelessWidget {
-  final String category;
-  final String description;
-  final double amount;
-  final IconData icon;
+  final Expense expense;
 
   const _ExpenseItem({
-    required this.category,
-    required this.description,
-    required this.amount,
-    required this.icon,
+    required this.expense,
   });
 
   @override
@@ -205,12 +393,12 @@ class _ExpenseItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
-          child: Icon(icon),
+          child: Icon(expense.icon),
         ),
-        title: Text(description),
-        subtitle: Text(category),
+        title: Text(expense.description),
+        subtitle: Text(expense.category),
         trailing: Text(
-          '¥${amount.toStringAsFixed(0)}',
+          '¥${expense.amount.toStringAsFixed(0)}',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
           ),
