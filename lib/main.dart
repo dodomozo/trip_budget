@@ -316,14 +316,20 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 TextButton(
-                  onPressed: () {
-                    Navigator.push(
+                  onPressed: () async {
+                    final updatedExpenses = await Navigator.push<List<Expense>>(
                       context,
                       MaterialPageRoute(
                         builder: (context) =>
                             ExpenseHistoryPage(expenses: expenses),
                       ),
                     );
+
+                    if (updatedExpenses != null) {
+                      setState(() {
+                        expenses = updatedExpenses;
+                      });
+                    }
                   },
                   child: const Text('View All'),
                 ),
@@ -360,13 +366,80 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 }
 
-class ExpenseHistoryPage extends StatelessWidget {
+class ExpenseHistoryPage extends StatefulWidget {
   final List<Expense> expenses;
 
   const ExpenseHistoryPage({super.key, required this.expenses});
 
+  @override
+  State<ExpenseHistoryPage> createState() => _ExpenseHistoryPageState();
+}
+
+class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
+  late List<Expense> expenses;
+
+  @override
+  void initState() {
+    super.initState();
+    expenses = [...widget.expenses];
+  }
+
   String _formatDate(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _saveExpenses() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setStringList(
+      'expense_descriptions',
+      expenses.map((expense) => expense.description).toList(),
+    );
+
+    await prefs.setStringList(
+      'expense_categories',
+      expenses.map((expense) => expense.category).toList(),
+    );
+
+    await prefs.setStringList(
+      'expense_amounts',
+      expenses.map((expense) => expense.amount.toString()).toList(),
+    );
+
+    await prefs.setStringList(
+      'expense_dates',
+      expenses.map((expense) => expense.date.toIso8601String()).toList(),
+    );
+  }
+
+  Future<bool> _confirmDelete(Expense expense) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Expense?'),
+          content: Text(
+            'Are you sure you want to delete "${expense.description}"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
   }
 
   @override
@@ -375,7 +448,15 @@ class ExpenseHistoryPage extends StatelessWidget {
       ..sort((a, b) => b.date.compareTo(a.date));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Expense History')),
+      appBar: AppBar(
+        title: const Text('Expense History'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context, expenses);
+          },
+        ),
+      ),
       body: sortedExpenses.isEmpty
           ? const Center(
               child: Text(
@@ -389,12 +470,40 @@ class ExpenseHistoryPage extends StatelessWidget {
               itemBuilder: (context, index) {
                 final expense = sortedExpenses[index];
 
-                return _ExpenseItem(
-                  category: expense.category,
-                  description: expense.description,
-                  amount: expense.amount,
-                  icon: expense.icon,
-                  date: _formatDate(expense.date),
+                return Dismissible(
+                  key: ObjectKey(expense),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  confirmDismiss: (_) async {
+                    return await _confirmDelete(expense);
+                  },
+                  onDismissed: (_) {
+                    setState(() {
+                      expenses.remove(expense);
+                    });
+
+                    _saveExpenses();
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${expense.description} deleted')),
+                    );
+                  },
+                  child: _ExpenseItem(
+                    category: expense.category,
+                    description: expense.description,
+                    amount: expense.amount,
+                    icon: expense.icon,
+                    date: _formatDate(expense.date),
+                  ),
                 );
               },
             ),
