@@ -237,6 +237,16 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  List<Expense> get todaysExpenses {
+    final now = DateTime.now();
+
+    return expenses.where((expense) {
+      return expense.date.year == now.year &&
+          expense.date.month == now.month &&
+          expense.date.day == now.day;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -298,20 +308,37 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
             const SizedBox(height: 24),
 
-            const Text(
-              "Today's Spending",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Today's Spending",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            ExpenseHistoryPage(expenses: expenses),
+                      ),
+                    );
+                  },
+                  child: const Text('View All'),
+                ),
+              ],
             ),
 
             const SizedBox(height: 12),
 
-            if (expenses.isEmpty)
+            if (todaysExpenses.isEmpty)
               const Text(
-                'No expenses yet.',
+                'No expenses today.',
                 style: TextStyle(color: Colors.grey),
               ),
 
-            ...expenses.map(
+            ...todaysExpenses.map(
               (expense) => _ExpenseItem(
                 category: expense.category,
                 description: expense.description,
@@ -329,6 +356,48 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         icon: const Icon(Icons.add),
         label: const Text('Add Expense'),
       ),
+    );
+  }
+}
+
+class ExpenseHistoryPage extends StatelessWidget {
+  final List<Expense> expenses;
+
+  const ExpenseHistoryPage({super.key, required this.expenses});
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sortedExpenses = [...expenses]
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Expense History')),
+      body: sortedExpenses.isEmpty
+          ? const Center(
+              child: Text(
+                'No expenses yet.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: sortedExpenses.length,
+              itemBuilder: (context, index) {
+                final expense = sortedExpenses[index];
+
+                return _ExpenseItem(
+                  category: expense.category,
+                  description: expense.description,
+                  amount: expense.amount,
+                  icon: expense.icon,
+                  date: _formatDate(expense.date),
+                );
+              },
+            ),
     );
   }
 }
