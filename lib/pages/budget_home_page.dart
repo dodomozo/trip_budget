@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'expense_history_page.dart';
+import 'trip_settings_page.dart';
 import '../models/expense.dart';
 import '../models/trip.dart';
 import '../widgets/expense_item.dart';
 import '../widgets/summary_card.dart';
 import '../services/expense_storage_service.dart';
+import '../services/trip_storage_service.dart';
 
 class BudgetHomePage extends StatefulWidget {
   const BudgetHomePage({super.key});
@@ -21,6 +23,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   void initState() {
     super.initState();
     _loadExpenses();
+    _loadTrip();
   }
 
   Future<void> _loadExpenses() async {
@@ -31,6 +34,18 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
     setState(() {
       expenses = loadedExpenses;
+    });
+  }
+
+  Future<void> _loadTrip() async {
+    final savedTrip = await _tripStorageService.loadTrip();
+
+    if (!mounted || savedTrip == null) {
+      return;
+    }
+
+    setState(() {
+      trip = savedTrip;
     });
   }
 
@@ -251,7 +266,23 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Budget Monitoring')),
+      appBar: AppBar(
+        title: const Text('Budget Monitoring'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Trip Settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const TripSettingsPage(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -445,10 +476,12 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     );
   }
 
-  final Trip trip = Trip(
+  Trip trip = Trip(
     name: 'Japan Business Trip',
     allowance: 200000,
     startDate: DateTime(2026, 9, 15),
     endDate: DateTime(2026, 12, 15),
   );
+
+  final TripStorageService _tripStorageService = TripStorageService();
 }
