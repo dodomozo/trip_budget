@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'expense_history_page.dart';
 import '../models/expense.dart';
+import '../models/trip.dart';
 import '../widgets/expense_item.dart';
 import '../widgets/summary_card.dart';
-import 'expense_history_page.dart';
 import '../services/expense_storage_service.dart';
 
 class BudgetHomePage extends StatefulWidget {
@@ -14,8 +15,6 @@ class BudgetHomePage extends StatefulWidget {
 }
 
 class _BudgetHomePageState extends State<BudgetHomePage> {
-  static const totalAllowance = 200000.0;
-
   List<Expense> expenses = [];
 
   @override
@@ -45,7 +44,31 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   double get remainingBudget {
-    return totalAllowance - totalSpent;
+    return trip.allowance - totalSpent;
+  }
+
+  int get remainingDays {
+    final today = DateTime.now();
+
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    final endDate = DateTime(
+      trip.endDate.year,
+      trip.endDate.month,
+      trip.endDate.day,
+    );
+
+    final days = endDate.difference(todayDate).inDays;
+
+    return days < 0 ? 0 : days + 1;
+  }
+
+  double get recommendedDailyBudget {
+    if (remainingDays <= 0) {
+      return 0;
+    }
+
+    return remainingBudget / remainingDays;
   }
 
   Future<void> _addExpense() async {
@@ -168,6 +191,26 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     }).toList();
   }
 
+  double get todaysSpending {
+    return todaysExpenses.fold(0, (sum, expense) => sum + expense.amount);
+  }
+
+  double get dailyBudgetDifference {
+    return recommendedDailyBudget - todaysSpending;
+  }
+
+  String get dailyBudgetStatus {
+    if (todaysSpending == 0) {
+      return 'No spending today';
+    }
+
+    if (dailyBudgetDifference >= 0) {
+      return 'Within daily budget';
+    }
+
+    return 'Over daily budget';
+  }
+
   Future<void> _openExpenseHistory() async {
     final updatedExpenses = await Navigator.push<List<Expense>>(
       context,
@@ -192,9 +235,21 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Japan Business Trip',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            Text(
+              trip.name,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+
+            Text(
+              '${_formatDate(trip.startDate)} → ${_formatDate(trip.endDate)}',
+              style: const TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+
+            Text(
+              '$remainingDays days remaining',
+              style: const TextStyle(color: Colors.grey, fontSize: 14),
             ),
 
             const SizedBox(height: 24),
@@ -222,6 +277,34 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
             ),
 
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Recommended Daily Budget',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '¥${recommendedDailyBudget.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Based on your remaining budget and trip days',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
             const SizedBox(height: 12),
 
             Row(
@@ -229,7 +312,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 Expanded(
                   child: SummaryCard(
                     title: 'Allowance',
-                    value: '¥${totalAllowance.toStringAsFixed(0)}',
+                    value: '¥${trip.allowance.toStringAsFixed(0)}',
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -256,6 +339,25 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   child: const Text('View All'),
                 ),
               ],
+            ),
+            const SizedBox(height: 4),
+
+            Text(
+              '¥${todaysSpending.toStringAsFixed(0)} spent today',
+              style: const TextStyle(color: Colors.grey),
+            ),
+
+            const SizedBox(height: 4),
+
+            Text(
+              dailyBudgetStatus,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Text(
+              dailyBudgetDifference >= 0
+                  ? '¥${dailyBudgetDifference.toStringAsFixed(0)} remaining for today'
+                  : '¥${dailyBudgetDifference.abs().toStringAsFixed(0)} over today\'s budget',
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
 
             const SizedBox(height: 12),
@@ -286,4 +388,11 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       ),
     );
   }
+
+  final Trip trip = Trip(
+    name: 'Japan Business Trip',
+    allowance: 200000,
+    startDate: DateTime(2026, 9, 15),
+    endDate: DateTime(2026, 12, 15),
+  );
 }
