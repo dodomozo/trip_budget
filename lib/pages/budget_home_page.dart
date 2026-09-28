@@ -199,6 +199,28 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     return recommendedDailyBudget - todaysSpending;
   }
 
+  double get averageDailySpending {
+    if (totalSpent == 0) {
+      return 0;
+    }
+
+    final daysElapsed = trip.totalDays - remainingDays + 1;
+
+    if (daysElapsed <= 0) {
+      return 0;
+    }
+
+    return totalSpent / daysElapsed;
+  }
+
+  double get projectedTotalSpending {
+    return averageDailySpending * trip.totalDays;
+  }
+
+  double get projectedRemainingBudget {
+    return trip.allowance - projectedTotalSpending;
+  }
+
   String get dailyBudgetStatus {
     if (todaysSpending == 0) {
       return 'No spending today';
@@ -299,6 +321,40 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const Text(
                       'Based on your remaining budget and trip days',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Spending Forecast',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '¥${projectedTotalSpending.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Projected total spending',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      projectedRemainingBudget >= 0
+                          ? 'Projected remaining: ¥${projectedRemainingBudget.toStringAsFixed(0)}'
+                          : 'Projected over budget: ¥${projectedRemainingBudget.abs().toStringAsFixed(0)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
