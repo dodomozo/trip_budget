@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/expense.dart';
 import '../widgets/expense_item.dart';
 import '../widgets/summary_card.dart';
 import 'expense_history_page.dart';
+import '../services/expense_storage_service.dart';
 
 class BudgetHomePage extends StatefulWidget {
   const BudgetHomePage({super.key});
@@ -25,26 +25,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   Future<void> _loadExpenses() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final descriptions = prefs.getStringList('expense_descriptions') ?? [];
-    final categories = prefs.getStringList('expense_categories') ?? [];
-    final amounts = prefs.getStringList('expense_amounts') ?? [];
-    final dates = prefs.getStringList('expense_dates') ?? [];
-
-    final loadedExpenses = <Expense>[];
-
-    for (var i = 0; i < descriptions.length; i++) {
-      loadedExpenses.add(
-        Expense(
-          description: descriptions[i],
-          category: categories[i],
-          amount: double.parse(amounts[i]),
-          icon: _getIcon(categories[i]),
-          date: DateTime.parse(dates[i]),
-        ),
-      );
-    }
+    final storage = ExpenseStorageService();
+    final loadedExpenses = await storage.loadExpenses();
 
     if (!mounted) return;
 
@@ -54,40 +36,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   Future<void> _saveExpenses() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setStringList(
-      'expense_descriptions',
-      expenses.map((expense) => expense.description).toList(),
-    );
-
-    await prefs.setStringList(
-      'expense_categories',
-      expenses.map((expense) => expense.category).toList(),
-    );
-
-    await prefs.setStringList(
-      'expense_amounts',
-      expenses.map((expense) => expense.amount.toString()).toList(),
-    );
-
-    await prefs.setStringList(
-      'expense_dates',
-      expenses.map((expense) => expense.date.toIso8601String()).toList(),
-    );
-  }
-
-  IconData _getIcon(String category) {
-    switch (category) {
-      case 'Food':
-        return Icons.restaurant;
-      case 'Transportation':
-        return Icons.train;
-      case 'Shopping':
-        return Icons.shopping_bag;
-      default:
-        return Icons.receipt;
-    }
+    final storage = ExpenseStorageService();
+    await storage.saveExpenses(expenses);
   }
 
   double get totalSpent {
@@ -116,14 +66,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 children: [
                   DropdownButtonFormField<String>(
                     initialValue: selectedCategory,
-                    decoration: const InputDecoration(
-                      labelText: 'Category',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Category'),
                     items: const [
-                      DropdownMenuItem(
-                        value: 'Food',
-                        child: Text('Food'),
-                      ),
+                      DropdownMenuItem(value: 'Food', child: Text('Food')),
                       DropdownMenuItem(
                         value: 'Transportation',
                         child: Text('Transportation'),
@@ -132,10 +77,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                         value: 'Shopping',
                         child: Text('Shopping'),
                       ),
-                      DropdownMenuItem(
-                        value: 'Other',
-                        child: Text('Other'),
-                      ),
+                      DropdownMenuItem(value: 'Other', child: Text('Other')),
                     ],
                     onChanged: (value) {
                       if (value != null) {
@@ -148,9 +90,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Description',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Description'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -170,8 +110,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    final description =
-                        descriptionController.text.trim();
+                    final description = descriptionController.text.trim();
 
                     final amount = double.tryParse(
                       amountController.text.trim(),
@@ -187,7 +126,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                         category: selectedCategory,
                         description: description,
                         amount: amount,
-                        icon: _getIcon(selectedCategory),
+                        icon: ExpenseStorageService.getIcon(selectedCategory),
                         date: DateTime.now(),
                       ),
                     );
@@ -233,9 +172,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     final updatedExpenses = await Navigator.push<List<Expense>>(
       context,
       MaterialPageRoute(
-        builder: (context) => ExpenseHistoryPage(
-          expenses: expenses,
-        ),
+        builder: (context) => ExpenseHistoryPage(expenses: expenses),
       ),
     );
 
@@ -249,9 +186,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Budget Monitoring'),
-      ),
+      appBar: AppBar(title: const Text('Budget Monitoring')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -259,10 +194,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           children: [
             const Text(
               'Japan Business Trip',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 24),
@@ -275,10 +207,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   children: [
                     const Text(
                       'Remaining Budget',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -320,10 +249,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               children: [
                 const Text(
                   "Today's Spending",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 TextButton(
                   onPressed: _openExpenseHistory,

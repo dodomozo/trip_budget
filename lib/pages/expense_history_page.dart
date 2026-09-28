@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/expense_storage_service.dart';
 import '../models/expense.dart';
 import '../widgets/expense_item.dart';
 
 class ExpenseHistoryPage extends StatefulWidget {
   final List<Expense> expenses;
 
-  const ExpenseHistoryPage({
-    super.key,
-    required this.expenses,
-  });
+  const ExpenseHistoryPage({super.key, required this.expenses});
 
   @override
   State<ExpenseHistoryPage> createState() => _ExpenseHistoryPageState();
@@ -30,27 +27,8 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
   }
 
   Future<void> _saveExpenses() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setStringList(
-      'expense_descriptions',
-      expenses.map((expense) => expense.description).toList(),
-    );
-
-    await prefs.setStringList(
-      'expense_categories',
-      expenses.map((expense) => expense.category).toList(),
-    );
-
-    await prefs.setStringList(
-      'expense_amounts',
-      expenses.map((expense) => expense.amount.toString()).toList(),
-    );
-
-    await prefs.setStringList(
-      'expense_dates',
-      expenses.map((expense) => expense.date.toIso8601String()).toList(),
-    );
+    final storage = ExpenseStorageService();
+    await storage.saveExpenses(expenses);
   }
 
   Future<bool> _confirmDelete(Expense expense) async {
@@ -83,9 +61,7 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     return confirmed ?? false;
   }
 
-  Future<void> _deleteExpenseAfterConfirmation(
-    Expense expense,
-  ) async {
+  Future<void> _deleteExpenseAfterConfirmation(Expense expense) async {
     setState(() {
       expenses.remove(expense);
     });
@@ -94,11 +70,9 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${expense.description} deleted'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${expense.description} deleted')));
   }
 
   @override
@@ -140,10 +114,7 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
                       color: Colors.red,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
-                      Icons.delete,
-                      color: Colors.white,
-                    ),
+                    child: const Icon(Icons.delete, color: Colors.white),
                   ),
                   confirmDismiss: (_) async {
                     return await _confirmDelete(expense);
