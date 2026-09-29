@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'pages/budget_home_page.dart';
-import 'models/trip.dart';
+import 'pages/startup_page.dart';
 
 void main() {
   runApp(const BudgetMonitoringApp());
@@ -22,15 +21,7 @@ class BudgetMonitoringApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: BudgetHomePage(
-        trip: Trip(
-          id: 'default-trip',
-          name: 'Japan Business Trip',
-          allowance: 200000,
-          startDate: DateTime(2026, 9, 22),
-          endDate: DateTime(2026, 12, 15),
-        ),
-      ),
+      home: const StartupPage(),
     );
   }
 }

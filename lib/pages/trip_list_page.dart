@@ -6,6 +6,7 @@ import 'budget_home_page.dart';
 import 'add_trip_page.dart';
 import 'edit_trip_page.dart';
 import '../services/expense_storage_service.dart';
+import '../services/active_trip_service.dart';
 
 class TripListPage extends StatefulWidget {
   const TripListPage({super.key});
@@ -18,6 +19,7 @@ class _TripListPageState extends State<TripListPage> {
   final TripStorageService _tripStorageService = TripStorageService();
 
   final ExpenseStorageService _expenseStorageService = ExpenseStorageService();
+  final ActiveTripService _activeTripService = ActiveTripService();
   List<Trip> trips = [];
   bool isLoading = true;
 
@@ -152,7 +154,11 @@ class _TripListPageState extends State<TripListPage> {
                         ),
                       ],
                     ),
-                    onTap: () {
+                    onTap: () async {
+                      await _activeTripService.saveActiveTripId(trip.id);
+
+                      if (!context.mounted) return;
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(
