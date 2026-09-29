@@ -5,9 +5,14 @@ import '../models/expense.dart';
 import '../widgets/expense_item.dart';
 
 class ExpenseHistoryPage extends StatefulWidget {
+  final String tripId;
   final List<Expense> expenses;
 
-  const ExpenseHistoryPage({super.key, required this.expenses});
+  const ExpenseHistoryPage({
+    super.key,
+    required this.tripId,
+    required this.expenses,
+  });
 
   @override
   State<ExpenseHistoryPage> createState() => _ExpenseHistoryPageState();
@@ -28,7 +33,7 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
 
   Future<void> _saveExpenses() async {
     final storage = ExpenseStorageService();
-    await storage.saveExpenses(expenses);
+    await storage.saveExpenses(widget.tripId, expenses);
   }
 
   Future<bool> _confirmDelete(Expense expense) async {

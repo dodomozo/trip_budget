@@ -4,24 +4,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/expense.dart';
 
 class ExpenseStorageService {
-  static const _descriptionsKey = 'expense_descriptions';
-  static const _categoriesKey = 'expense_categories';
-  static const _amountsKey = 'expense_amounts';
-  static const _datesKey = 'expense_dates';
+  String _key(String tripId, String type) {
+    return 'trip_${tripId}_expense_$type';
+  }
 
-  Future<List<Expense>> loadExpenses() async {
+  Future<List<Expense>> loadExpenses(String tripId) async {
     final prefs = await SharedPreferences.getInstance();
 
-    final descriptions = prefs.getStringList(_descriptionsKey) ?? [];
-    final categories = prefs.getStringList(_categoriesKey) ?? [];
-    final amounts = prefs.getStringList(_amountsKey) ?? [];
-    final dates = prefs.getStringList(_datesKey) ?? [];
+    final descriptions =
+        prefs.getStringList(_key(tripId, 'descriptions')) ?? [];
+    final categories = prefs.getStringList(_key(tripId, 'categories')) ?? [];
+    final amounts = prefs.getStringList(_key(tripId, 'amounts')) ?? [];
+    final dates = prefs.getStringList(_key(tripId, 'dates')) ?? [];
 
     final expenses = <Expense>[];
 
     for (var i = 0; i < descriptions.length; i++) {
       expenses.add(
         Expense(
+          tripId: tripId,
           description: descriptions[i],
           category: categories[i],
           amount: double.parse(amounts[i]),
@@ -34,26 +35,26 @@ class ExpenseStorageService {
     return expenses;
   }
 
-  Future<void> saveExpenses(List<Expense> expenses) async {
+  Future<void> saveExpenses(String tripId, List<Expense> expenses) async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setStringList(
-      _descriptionsKey,
+      _key(tripId, 'descriptions'),
       expenses.map((expense) => expense.description).toList(),
     );
 
     await prefs.setStringList(
-      _categoriesKey,
+      _key(tripId, 'categories'),
       expenses.map((expense) => expense.category).toList(),
     );
 
     await prefs.setStringList(
-      _amountsKey,
+      _key(tripId, 'amounts'),
       expenses.map((expense) => expense.amount.toString()).toList(),
     );
 
     await prefs.setStringList(
-      _datesKey,
+      _key(tripId, 'dates'),
       expenses.map((expense) => expense.date.toIso8601String()).toList(),
     );
   }

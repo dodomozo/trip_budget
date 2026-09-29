@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 class Expense {
+  final String tripId;
   final String category;
   final String description;
   final double amount;
@@ -8,6 +9,7 @@ class Expense {
   final DateTime date;
 
   Expense({
+    required this.tripId,
     required this.category,
     required this.description,
     required this.amount,

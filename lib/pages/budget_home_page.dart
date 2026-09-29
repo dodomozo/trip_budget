@@ -1,34 +1,38 @@
 import 'package:flutter/material.dart';
 
 import 'expense_history_page.dart';
-import 'trip_settings_page.dart';
+import 'trip_list_page.dart';
 import '../models/expense.dart';
 import '../models/trip.dart';
 import '../widgets/expense_item.dart';
 import '../widgets/summary_card.dart';
 import '../services/expense_storage_service.dart';
-import '../services/trip_storage_service.dart';
 
 class BudgetHomePage extends StatefulWidget {
-  const BudgetHomePage({super.key});
+  final Trip trip;
+
+  const BudgetHomePage({super.key, required this.trip});
 
   @override
   State<BudgetHomePage> createState() => _BudgetHomePageState();
 }
 
 class _BudgetHomePageState extends State<BudgetHomePage> {
+  late Trip trip;
   List<Expense> expenses = [];
 
   @override
   void initState() {
     super.initState();
+
+    trip = widget.trip;
+
     _loadExpenses();
-    _loadTrip();
   }
 
   Future<void> _loadExpenses() async {
     final storage = ExpenseStorageService();
-    final loadedExpenses = await storage.loadExpenses();
+    final loadedExpenses = await storage.loadExpenses(trip.id);
 
     if (!mounted) return;
 
@@ -37,21 +41,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     });
   }
 
-  Future<void> _loadTrip() async {
-    final savedTrip = await _tripStorageService.loadTrip();
-
-    if (!mounted || savedTrip == null) {
-      return;
-    }
-
-    setState(() {
-      trip = savedTrip;
-    });
-  }
-
   Future<void> _saveExpenses() async {
     final storage = ExpenseStorageService();
-    await storage.saveExpenses(expenses);
+    await storage.saveExpenses(trip.id, expenses);
   }
 
   double get totalSpent {
@@ -161,6 +153,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     Navigator.pop(
                       context,
                       Expense(
+                        tripId: trip.id,
                         category: selectedCategory,
                         description: description,
                         amount: amount,
@@ -252,7 +245,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     final updatedExpenses = await Navigator.push<List<Expense>>(
       context,
       MaterialPageRoute(
-        builder: (context) => ExpenseHistoryPage(expenses: expenses),
+        builder: (context) =>
+            ExpenseHistoryPage(tripId: trip.id, expenses: expenses),
       ),
     );
 
@@ -270,14 +264,12 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         title: const Text('Budget Monitoring'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Trip Settings',
+            icon: const Icon(Icons.folder_copy_outlined),
+            tooltip: 'My Trips',
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const TripSettingsPage(),
-                ),
+                MaterialPageRoute(builder: (context) => const TripListPage()),
               );
             },
           ),
@@ -475,13 +467,4 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       ),
     );
   }
-
-  Trip trip = Trip(
-    name: 'Japan Business Trip',
-    allowance: 200000,
-    startDate: DateTime(2026, 9, 15),
-    endDate: DateTime(2026, 12, 15),
-  );
-
-  final TripStorageService _tripStorageService = TripStorageService();
 }

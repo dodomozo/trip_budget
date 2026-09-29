@@ -84,6 +84,7 @@ class _TripSettingsPageState extends State<TripSettingsPage> {
     }
 
     final trip = Trip(
+      id: 'default-trip',
       name: name,
       allowance: allowance,
       startDate: startDate!,
