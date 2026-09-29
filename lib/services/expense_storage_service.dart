@@ -59,6 +59,15 @@ class ExpenseStorageService {
     );
   }
 
+  Future<void> deleteExpenses(String tripId) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove(_key(tripId, 'descriptions'));
+    await prefs.remove(_key(tripId, 'categories'));
+    await prefs.remove(_key(tripId, 'amounts'));
+    await prefs.remove(_key(tripId, 'dates'));
+  }
+
   static IconData getIcon(String category) {
     switch (category) {
       case 'Food':

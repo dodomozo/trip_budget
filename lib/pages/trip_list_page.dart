@@ -4,6 +4,8 @@ import '../models/trip.dart';
 import '../services/trip_storage_service.dart';
 import 'budget_home_page.dart';
 import 'add_trip_page.dart';
+import 'edit_trip_page.dart';
+import '../services/expense_storage_service.dart';
 
 class TripListPage extends StatefulWidget {
   const TripListPage({super.key});
@@ -15,6 +17,7 @@ class TripListPage extends StatefulWidget {
 class _TripListPageState extends State<TripListPage> {
   final TripStorageService _tripStorageService = TripStorageService();
 
+  final ExpenseStorageService _expenseStorageService = ExpenseStorageService();
   List<Trip> trips = [];
   bool isLoading = true;
 
@@ -33,6 +36,51 @@ class _TripListPageState extends State<TripListPage> {
       trips = loadedTrips;
       isLoading = false;
     });
+  }
+
+  Future<void> _deleteTrip(Trip trip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Trip?'),
+          content: Text(
+            'Are you sure you want to delete "${trip.name}"?\n\n'
+            'All expenses belonging to this trip will also be deleted.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    await _expenseStorageService.deleteExpenses(trip.id);
+    await _tripStorageService.deleteTrip(trip.id);
+
+    if (!mounted) return;
+
+    await _loadTrips();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('${trip.name} deleted')));
   }
 
   String _formatDate(DateTime date) {
@@ -76,7 +124,34 @@ class _TripListPageState extends State<TripListPage> {
                         'Allowance: ¥${trip.allowance.toStringAsFixed(0)}',
                       ),
                     ),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          tooltip: 'Edit Trip',
+                          onPressed: () async {
+                            final updated = await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => EditTripPage(trip: trip),
+                              ),
+                            );
+
+                            if (updated == true) {
+                              await _loadTrips();
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: 'Delete Trip',
+                          onPressed: () {
+                            _deleteTrip(trip);
+                          },
+                        ),
+                      ],
+                    ),
                     onTap: () {
                       Navigator.push(
                         context,

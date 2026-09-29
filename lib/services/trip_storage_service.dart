@@ -99,6 +99,21 @@ class TripStorageService {
     );
   }
 
+  Future<void> deleteTrip(String tripId) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final tripIds = prefs.getStringList(_tripIdsKey) ?? [];
+
+    tripIds.remove(tripId);
+
+    await prefs.setStringList(_tripIdsKey, tripIds);
+
+    await prefs.remove(_key(tripId, 'name'));
+    await prefs.remove(_key(tripId, 'allowance'));
+    await prefs.remove(_key(tripId, 'start_date'));
+    await prefs.remove(_key(tripId, 'end_date'));
+  }
+
   Future<void> migrateDefaultTrip() async {
     final prefs = await SharedPreferences.getInstance();
 
