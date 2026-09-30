@@ -46,6 +46,22 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     await storage.saveExpenses(trip.id, expenses);
   }
 
+  DateTime _dateOnly(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  DateTime get today {
+    return _dateOnly(DateTime.now());
+  }
+
+  DateTime get tripStart {
+    return _dateOnly(trip.startDate);
+  }
+
+  DateTime get tripEnd {
+    return _dateOnly(trip.endDate);
+  }
+
   double get totalSpent {
     return expenses.fold(0, (sum, expense) => sum + expense.totalAmount);
   }
@@ -55,19 +71,27 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   int get remainingDays {
-    final today = DateTime.now();
+    if (today.isBefore(tripStart)) {
+      return trip.totalDays;
+    }
 
-    final todayDate = DateTime(today.year, today.month, today.day);
+    if (today.isAfter(tripEnd)) {
+      return 0;
+    }
 
-    final endDate = DateTime(
-      trip.endDate.year,
-      trip.endDate.month,
-      trip.endDate.day,
-    );
+    return tripEnd.difference(today).inDays + 1;
+  }
 
-    final days = endDate.difference(todayDate).inDays;
+  int get elapsedTripDays {
+    if (today.isBefore(tripStart)) {
+      return 0;
+    }
 
-    return days < 0 ? 0 : days + 1;
+    if (today.isAfter(tripEnd)) {
+      return trip.totalDays;
+    }
+
+    return today.difference(tripStart).inDays + 1;
   }
 
   double get recommendedDailyBudget {
@@ -76,6 +100,73 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     }
 
     return remainingBudget / remainingDays;
+  }
+
+  List<Expense> get todaysExpenses {
+    return expenses.where((expense) {
+      final amount = expense.dailyAmounts[today] ?? 0;
+
+      return amount > 0;
+    }).toList();
+  }
+
+  double get todaysSpending {
+    return expenses.fold(
+      0,
+      (sum, expense) => sum + (expense.dailyAmounts[today] ?? 0),
+    );
+  }
+
+  double get dailyBudgetDifference {
+    return recommendedDailyBudget - todaysSpending;
+  }
+
+  double get actualSpendingUntilToday {
+    return expenses.fold(0, (sum, expense) {
+      double expenseTotal = 0;
+
+      for (final entry in expense.dailyAmounts.entries) {
+        final date = _dateOnly(entry.key);
+
+        if (!date.isAfter(today)) {
+          expenseTotal += entry.value;
+        }
+      }
+
+      return sum + expenseTotal;
+    });
+  }
+
+  double get averageDailySpending {
+    if (elapsedTripDays <= 0) {
+      return 0;
+    }
+
+    return actualSpendingUntilToday / elapsedTripDays;
+  }
+
+  double get projectedTotalSpending {
+    if (elapsedTripDays <= 0) {
+      return 0;
+    }
+
+    return averageDailySpending * trip.totalDays;
+  }
+
+  double get projectedRemainingBudget {
+    return trip.allowance - projectedTotalSpending;
+  }
+
+  String get dailyBudgetStatus {
+    if (todaysSpending == 0) {
+      return 'No spending today';
+    }
+
+    if (dailyBudgetDifference >= 0) {
+      return 'Within daily budget';
+    }
+
+    return 'Over daily budget';
   }
 
   Future<void> _addExpense() async {
@@ -99,67 +190,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   String _formatDate(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-  }
-
-  List<Expense> get todaysExpenses {
-    final today = DateTime.now();
-
-    final todayDate = DateTime(today.year, today.month, today.day);
-
-    return expenses.where((expense) {
-      final amount = expense.dailyAmounts[todayDate] ?? 0;
-
-      return amount > 0;
-    }).toList();
-  }
-
-  double get todaysSpending {
-    final today = DateTime.now();
-
-    final todayDate = DateTime(today.year, today.month, today.day);
-
-    return expenses.fold(
-      0,
-      (sum, expense) => sum + (expense.dailyAmounts[todayDate] ?? 0),
-    );
-  }
-
-  double get dailyBudgetDifference {
-    return recommendedDailyBudget - todaysSpending;
-  }
-
-  double get averageDailySpending {
-    if (totalSpent == 0) {
-      return 0;
-    }
-
-    final daysElapsed = trip.totalDays - remainingDays + 1;
-
-    if (daysElapsed <= 0) {
-      return 0;
-    }
-
-    return totalSpent / daysElapsed;
-  }
-
-  double get projectedTotalSpending {
-    return averageDailySpending * trip.totalDays;
-  }
-
-  double get projectedRemainingBudget {
-    return trip.allowance - projectedTotalSpending;
-  }
-
-  String get dailyBudgetStatus {
-    if (todaysSpending == 0) {
-      return 'No spending today';
-    }
-
-    if (dailyBudgetDifference >= 0) {
-      return 'Within daily budget';
-    }
-
-    return 'Over daily budget';
   }
 
   Future<void> _openExpenseHistory() async {
@@ -386,18 +416,14 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
 
             ...todaysExpenses.map((expense) {
-              final today = DateTime.now();
-
-              final todayDate = DateTime(today.year, today.month, today.day);
-
-              final amount = expense.dailyAmounts[todayDate] ?? 0;
+              final amount = expense.dailyAmounts[today] ?? 0;
 
               return ExpenseItem(
                 category: expense.category,
                 description: expense.description,
                 amount: amount,
                 icon: expense.icon,
-                date: _formatDate(todayDate),
+                date: _formatDate(today),
               );
             }),
           ],
@@ -606,9 +632,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     if (descriptionError != null || amountError != null || dateError != null) {
       setState(() {
         _descriptionError = descriptionError;
-
         _amountError = amountError;
-
         _dateError = dateError;
       });
 
@@ -745,7 +769,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
                   if (value) {
                     _rangeStart = _selectedDate;
-
                     _rangeEnd = _selectedDate;
                   } else {
                     _rangeStart = null;
