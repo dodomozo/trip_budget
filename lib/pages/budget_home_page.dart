@@ -47,7 +47,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   double get totalSpent {
-    return expenses.fold(0, (sum, expense) => sum + expense.amount);
+    return expenses.fold(0, (sum, expense) => sum + expense.totalAmount);
   }
 
   double get remainingBudget {
@@ -156,9 +156,14 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                         tripId: trip.id,
                         category: selectedCategory,
                         description: description,
-                        amount: amount,
+                        dailyAmounts: {
+                          DateTime(
+                            DateTime.now().year,
+                            DateTime.now().month,
+                            DateTime.now().day,
+                          ): amount,
+                        },
                         icon: ExpenseStorageService.getIcon(selectedCategory),
-                        date: DateTime.now(),
                       ),
                     );
                   },
@@ -191,16 +196,32 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   List<Expense> get todaysExpenses {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
 
     return expenses.where((expense) {
-      return expense.date.year == now.year &&
-          expense.date.month == now.month &&
-          expense.date.day == now.day;
+      return expense.dailyAmounts.keys.any((date) {
+        final expenseDate = DateTime(date.year, date.month, date.day);
+
+        return expenseDate == today;
+      });
     }).toList();
   }
 
   double get todaysSpending {
-    return todaysExpenses.fold(0, (sum, expense) => sum + expense.amount);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    return expenses.fold(0, (sum, expense) {
+      for (final entry in expense.dailyAmounts.entries) {
+        final date = DateTime(entry.key.year, entry.key.month, entry.key.day);
+
+        if (date == today) {
+          sum += entry.value;
+        }
+      }
+
+      return sum;
+    });
   }
 
   double get dailyBudgetDifference {
@@ -443,15 +464,30 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 style: TextStyle(color: Colors.grey),
               ),
 
-            ...todaysExpenses.map(
-              (expense) => ExpenseItem(
+            ...todaysExpenses.map((expense) {
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
+
+              final todayAmount = expense.dailyAmounts.entries
+                  .where(
+                    (entry) =>
+                        DateTime(
+                          entry.key.year,
+                          entry.key.month,
+                          entry.key.day,
+                        ) ==
+                        today,
+                  )
+                  .fold<double>(0, (sum, entry) => sum + entry.value);
+
+              return ExpenseItem(
                 category: expense.category,
                 description: expense.description,
-                amount: expense.amount,
+                amount: todayAmount,
                 icon: expense.icon,
-                date: _formatDate(expense.date),
-              ),
-            ),
+                date: _formatDate(today),
+              );
+            }),
           ],
         ),
       ),

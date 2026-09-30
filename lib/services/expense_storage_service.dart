@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,6 +8,16 @@ import '../models/expense.dart';
 class ExpenseStorageService {
   String _key(String tripId, String type) {
     return 'trip_${tripId}_expense_$type';
+  }
+
+  String _formatDateKey(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  DateTime _parseDateKey(String value) {
+    return DateTime.parse(value);
   }
 
   Future<List<Expense>> loadExpenses(String tripId) async {
@@ -20,14 +32,54 @@ class ExpenseStorageService {
     final expenses = <Expense>[];
 
     for (var i = 0; i < descriptions.length; i++) {
+      if (i >= categories.length || i >= amounts.length || i >= dates.length) {
+        continue;
+      }
+
+      final rawAmount = amounts[i];
+
+      Map<DateTime, double> dailyAmounts;
+
+      // New format: JSON containing one or more date/amount pairs.
+      try {
+        final decoded = jsonDecode(rawAmount);
+
+        if (decoded is Map<String, dynamic>) {
+          dailyAmounts = {};
+
+          for (final entry in decoded.entries) {
+            final date = _parseDateKey(entry.key);
+            final amount = (entry.value as num).toDouble();
+
+            dailyAmounts[DateTime(date.year, date.month, date.day)] = amount;
+          }
+        } else {
+          throw const FormatException();
+        }
+      } catch (_) {
+        // Old format: a single numeric amount + single date.
+        final amount = double.tryParse(rawAmount);
+
+        if (amount == null) {
+          continue;
+        }
+
+        final date = DateTime.parse(dates[i]);
+
+        dailyAmounts = {DateTime(date.year, date.month, date.day): amount};
+      }
+
+      if (dailyAmounts.isEmpty) {
+        continue;
+      }
+
       expenses.add(
         Expense(
           tripId: tripId,
           description: descriptions[i],
           category: categories[i],
-          amount: double.parse(amounts[i]),
+          dailyAmounts: dailyAmounts,
           icon: getIcon(categories[i]),
-          date: DateTime.parse(dates[i]),
         ),
       );
     }
@@ -50,12 +102,22 @@ class ExpenseStorageService {
 
     await prefs.setStringList(
       _key(tripId, 'amounts'),
-      expenses.map((expense) => expense.amount.toString()).toList(),
+      expenses
+          .map(
+            (expense) => jsonEncode(
+              expense.dailyAmounts.map(
+                (date, amount) => MapEntry(_formatDateKey(date), amount),
+              ),
+            ),
+          )
+          .toList(),
     );
 
     await prefs.setStringList(
       _key(tripId, 'dates'),
-      expenses.map((expense) => expense.date.toIso8601String()).toList(),
+      expenses
+          .map((expense) => _formatDateKey(expense.dailyAmounts.keys.first))
+          .toList(),
     );
   }
 
