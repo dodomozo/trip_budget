@@ -261,7 +261,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Budget Monitoring'),
+        title: Text(trip.name),
         actions: [
           IconButton(
             icon: const Icon(Icons.folder_copy_outlined),
@@ -280,10 +280,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              trip.name,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
             const SizedBox(height: 4),
 
             Text(

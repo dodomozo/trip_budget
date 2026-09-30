@@ -36,6 +36,166 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     await storage.saveExpenses(widget.tripId, expenses);
   }
 
+  Future<void> _editExpense(Expense expense) async {
+    final descriptionController = TextEditingController(
+      text: expense.description,
+    );
+    final amountController = TextEditingController(
+      text: expense.amount.toStringAsFixed(0),
+    );
+
+    String selectedCategory = expense.category;
+    DateTime selectedDate = expense.date;
+
+    final updatedExpense = await showDialog<Expense>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Expense'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedCategory,
+                      decoration: const InputDecoration(labelText: 'Category'),
+                      items: const [
+                        DropdownMenuItem(value: 'Food', child: Text('Food')),
+                        DropdownMenuItem(
+                          value: 'Transportation',
+                          child: Text('Transportation'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Shopping',
+                          child: Text('Shopping'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+
+                        setDialogState(() {
+                          selectedCategory = value;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    TextField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Amount',
+                        prefixText: '¥ ',
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.calendar_today),
+                      title: const Text('Date'),
+                      subtitle: Text(_formatDate(selectedDate)),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+
+                        if (pickedDate == null) return;
+
+                        setDialogState(() {
+                          selectedDate = pickedDate;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final description = descriptionController.text.trim();
+                    final amount = double.tryParse(
+                      amountController.text.trim(),
+                    );
+
+                    if (description.isEmpty || amount == null || amount <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Please enter a valid description and amount.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    Navigator.pop(
+                      dialogContext,
+                      Expense(
+                        tripId: expense.tripId,
+                        description: description,
+                        category: selectedCategory,
+                        amount: amount,
+                        icon: ExpenseStorageService.getIcon(selectedCategory),
+                        date: selectedDate,
+                      ),
+                    );
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    descriptionController.dispose();
+    amountController.dispose();
+
+    if (updatedExpense == null) return;
+
+    final index = expenses.indexOf(expense);
+
+    if (index == -1) return;
+
+    setState(() {
+      expenses[index] = updatedExpense;
+    });
+
+    await _saveExpenses();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${updatedExpense.description} updated')),
+    );
+  }
+
   Future<bool> _confirmDelete(Expense expense) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -127,12 +287,17 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
                   onDismissed: (_) {
                     _deleteExpenseAfterConfirmation(expense);
                   },
-                  child: ExpenseItem(
-                    category: expense.category,
-                    description: expense.description,
-                    amount: expense.amount,
-                    icon: expense.icon,
-                    date: _formatDate(expense.date),
+                  child: GestureDetector(
+                    onTap: () {
+                      _editExpense(expense);
+                    },
+                    child: ExpenseItem(
+                      category: expense.category,
+                      description: expense.description,
+                      amount: expense.amount,
+                      icon: expense.icon,
+                      date: _formatDate(expense.date),
+                    ),
                   ),
                 );
               },
