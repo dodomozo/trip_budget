@@ -4,6 +4,18 @@ import '../models/expense.dart';
 import '../services/expense_storage_service.dart';
 import '../widgets/expense_item.dart';
 
+class _ExpenseDayEntry {
+  final Expense expense;
+  final DateTime date;
+  final double amount;
+
+  const _ExpenseDayEntry({
+    required this.expense,
+    required this.date,
+    required this.amount,
+  });
+}
+
 class ExpenseHistoryPage extends StatefulWidget {
   final String tripId;
   final List<Expense> expenses;
@@ -35,12 +47,38 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     return DateTime(date.year, date.month, date.day);
   }
 
-  DateTime _expenseDate(Expense expense) {
-    return _dateOnly(expense.dailyAmounts.keys.first);
-  }
+  List<_ExpenseDayEntry> _buildDailyEntries() {
+    final entries = <_ExpenseDayEntry>[];
 
-  double _expenseAmount(Expense expense) {
-    return expense.totalAmount;
+    for (final expense in expenses) {
+      for (final entry in expense.dailyAmounts.entries) {
+        final amount = entry.value;
+
+        if (amount <= 0) {
+          continue;
+        }
+
+        entries.add(
+          _ExpenseDayEntry(
+            expense: expense,
+            date: _dateOnly(entry.key),
+            amount: amount,
+          ),
+        );
+      }
+    }
+
+    entries.sort((a, b) {
+      final dateComparison = b.date.compareTo(a.date);
+
+      if (dateComparison != 0) {
+        return dateComparison;
+      }
+
+      return a.expense.description.compareTo(b.expense.description);
+    });
+
+    return entries;
   }
 
   Future<void> _saveExpenses() async {
@@ -48,25 +86,26 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     await storage.saveExpenses(widget.tripId, expenses);
   }
 
-  Future<bool> _confirmDelete(Expense expense) async {
+  Future<bool> _confirmDelete(_ExpenseDayEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Delete Expense?'),
+          title: const Text('Delete Expense Portion?'),
           content: Text(
-            'Are you sure you want to delete "${expense.description}"?',
+            'Delete ${entry.descriptionForDialog} '
+            'for ${_formatDate(entry.date)}?',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context, false);
+                Navigator.pop(dialogContext, false);
               },
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(context, true);
+                Navigator.pop(dialogContext, true);
               },
               child: const Text('Delete'),
             ),
@@ -78,51 +117,110 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     return confirmed ?? false;
   }
 
-  Future<void> _deleteExpenseAfterConfirmation(Expense expense) async {
+  Future<void> _deleteExpensePortion(_ExpenseDayEntry entry) async {
+    final expenseIndex = expenses.indexOf(entry.expense);
+
+    if (expenseIndex == -1) {
+      return;
+    }
+
+    final updatedDailyAmounts = Map<DateTime, double>.from(
+      entry.expense.dailyAmounts,
+    );
+
+    updatedDailyAmounts.remove(entry.date);
+
     setState(() {
-      expenses.remove(expense);
+      if (updatedDailyAmounts.isEmpty) {
+        expenses.removeAt(expenseIndex);
+      } else {
+        expenses[expenseIndex] = Expense(
+          tripId: entry.expense.tripId,
+          category: entry.expense.category,
+          description: entry.expense.description,
+          dailyAmounts: updatedDailyAmounts,
+          icon: entry.expense.icon,
+        );
+      }
     });
 
     await _saveExpenses();
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('${expense.description} deleted')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${entry.expense.description} on ${_formatDate(entry.date)} deleted',
+        ),
+      ),
+    );
   }
 
-  Future<void> _editExpense(Expense expense) async {
-    final updatedExpense = await showDialog<Expense>(
+  Future<void> _editExpensePortion(_ExpenseDayEntry entry) async {
+    final updatedPortion = await showDialog<_EditedExpensePortion>(
       context: context,
       builder: (dialogContext) {
-        return EditExpenseDialog(expense: expense);
+        return EditExpensePortionDialog(
+          description: entry.expense.description,
+          category: entry.expense.category,
+          amount: entry.amount,
+          date: entry.date,
+          tripId: entry.expense.tripId,
+        );
       },
     );
 
-    if (updatedExpense == null) return;
+    if (updatedPortion == null) {
+      return;
+    }
 
-    final index = expenses.indexOf(expense);
+    final expenseIndex = expenses.indexOf(entry.expense);
 
-    if (index == -1) return;
+    if (expenseIndex == -1) {
+      return;
+    }
+
+    final originalExpense = expenses[expenseIndex];
+
+    final updatedDailyAmounts = Map<DateTime, double>.from(
+      originalExpense.dailyAmounts,
+    );
+
+    // Remove the original day's portion.
+    updatedDailyAmounts.remove(entry.date);
+
+    // Add the edited portion to its new date.
+    updatedDailyAmounts[updatedPortion.date] = updatedPortion.amount;
+
+    final updatedExpense = Expense(
+      tripId: originalExpense.tripId,
+      category: updatedPortion.category,
+      description: updatedPortion.description,
+      dailyAmounts: updatedDailyAmounts,
+      icon: ExpenseStorageService.getIcon(updatedPortion.category),
+    );
 
     setState(() {
-      expenses[index] = updatedExpense;
+      expenses[expenseIndex] = updatedExpense;
     });
 
     await _saveExpenses();
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${updatedExpense.description} updated')),
+      SnackBar(content: Text('${updatedPortion.description} updated')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final sortedExpenses = [...expenses]
-      ..sort((a, b) => _expenseDate(b).compareTo(_expenseDate(a)));
+    final dailyEntries = _buildDailyEntries();
 
     return Scaffold(
       appBar: AppBar(
@@ -134,7 +232,7 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
           },
         ),
       ),
-      body: sortedExpenses.isEmpty
+      body: dailyEntries.isEmpty
           ? const Center(
               child: Text(
                 'No expenses yet.',
@@ -143,12 +241,16 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
             )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: sortedExpenses.length,
+              itemCount: dailyEntries.length,
               itemBuilder: (context, index) {
-                final expense = sortedExpenses[index];
+                final entry = dailyEntries[index];
 
                 return Dismissible(
-                  key: ObjectKey(expense),
+                  key: ValueKey(
+                    '${entry.expense.tripId}_'
+                    '${entry.expense.description}_'
+                    '${entry.date.toIso8601String()}',
+                  ),
                   direction: DismissDirection.endToStart,
                   background: Container(
                     alignment: Alignment.centerRight,
@@ -161,21 +263,21 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
                     child: const Icon(Icons.delete, color: Colors.white),
                   ),
                   confirmDismiss: (_) async {
-                    return await _confirmDelete(expense);
+                    return await _confirmDelete(entry);
                   },
                   onDismissed: (_) {
-                    _deleteExpenseAfterConfirmation(expense);
+                    _deleteExpensePortion(entry);
                   },
                   child: GestureDetector(
                     onTap: () {
-                      _editExpense(expense);
+                      _editExpensePortion(entry);
                     },
                     child: ExpenseItem(
-                      category: expense.category,
-                      description: expense.description,
-                      amount: _expenseAmount(expense),
-                      icon: expense.icon,
-                      date: _formatDate(_expenseDate(expense)),
+                      category: entry.expense.category,
+                      description: entry.expense.description,
+                      amount: entry.amount,
+                      icon: entry.expense.icon,
+                      date: _formatDate(entry.date),
                     ),
                   ),
                 );
@@ -185,39 +287,76 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
   }
 }
 
-class EditExpenseDialog extends StatefulWidget {
-  final Expense expense;
-
-  const EditExpenseDialog({super.key, required this.expense});
-
-  @override
-  State<EditExpenseDialog> createState() => _EditExpenseDialogState();
+extension on _ExpenseDayEntry {
+  String get descriptionForDialog {
+    return '¥${amount.toStringAsFixed(0)} ${expense.description}';
+  }
 }
 
-class _EditExpenseDialogState extends State<EditExpenseDialog> {
+class _EditedExpensePortion {
+  final String tripId;
+  final String description;
+  final String category;
+  final double amount;
+  final DateTime date;
+
+  const _EditedExpensePortion({
+    required this.tripId,
+    required this.description,
+    required this.category,
+    required this.amount,
+    required this.date,
+  });
+}
+
+class EditExpensePortionDialog extends StatefulWidget {
+  final String tripId;
+  final String description;
+  final String category;
+  final double amount;
+  final DateTime date;
+
+  const EditExpensePortionDialog({
+    super.key,
+    required this.tripId,
+    required this.description,
+    required this.category,
+    required this.amount,
+    required this.date,
+  });
+
+  @override
+  State<EditExpensePortionDialog> createState() =>
+      _EditExpensePortionDialogState();
+}
+
+class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
   late final TextEditingController _descriptionController;
   late final TextEditingController _amountController;
 
   late String _selectedCategory;
   late DateTime _selectedDate;
 
+  String? _descriptionError;
+  String? _amountError;
+
   @override
   void initState() {
     super.initState();
 
-    _descriptionController = TextEditingController(
-      text: widget.expense.description,
-    );
+    _descriptionController = TextEditingController(text: widget.description);
 
     _amountController = TextEditingController(
-      text: widget.expense.totalAmount.toStringAsFixed(0),
+      text: widget.amount.toStringAsFixed(0),
     );
 
-    _selectedCategory = widget.expense.category;
+    _selectedCategory = widget.category;
 
-    final date = widget.expense.dailyAmounts.keys.first;
-
-    _selectedDate = DateTime(date.year, date.month, date.day);
+    _selectedDate = DateTime(
+      widget.date.year,
+      widget.date.month,
+      widget.date.day,
+    );
   }
 
   @override
@@ -240,7 +379,9 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
       lastDate: DateTime(2100),
     );
 
-    if (pickedDate == null || !mounted) return;
+    if (pickedDate == null || !mounted) {
+      return;
+    }
 
     setState(() {
       _selectedDate = DateTime(
@@ -253,26 +394,43 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
 
   void _save() {
     final description = _descriptionController.text.trim();
+    final amountText = _amountController.text.trim();
 
-    final amount = double.tryParse(_amountController.text.trim());
+    final amount = double.tryParse(amountText);
+
+    String? descriptionError;
+    String? amountError;
 
     if (description.isEmpty) {
+      descriptionError = 'Please enter a description.';
+    }
+
+    if (amountText.isEmpty) {
+      amountError = 'Please enter an amount.';
+    } else if (amount == null) {
+      amountError = 'Please enter a valid number.';
+    } else if (amount <= 0) {
+      amountError = 'Amount must be greater than 0.';
+    }
+
+    if (descriptionError != null || amountError != null) {
+      setState(() {
+        _descriptionError = descriptionError;
+        _amountError = amountError;
+      });
+
       return;
     }
 
-    if (amount == null || amount <= 0) {
-      return;
-    }
-
-    final updatedExpense = Expense(
-      tripId: widget.expense.tripId,
+    final result = _EditedExpensePortion(
+      tripId: widget.tripId,
       description: description,
       category: _selectedCategory,
-      dailyAmounts: {_selectedDate: amount},
-      icon: ExpenseStorageService.getIcon(_selectedCategory),
+      amount: amount!,
+      date: _selectedDate,
     );
 
-    Navigator.of(context).pop(updatedExpense);
+    Navigator.of(context).pop(result);
   }
 
   @override
@@ -285,7 +443,10 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
           children: [
             TextField(
               controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: InputDecoration(
+                labelText: 'Description',
+                errorText: _descriptionError,
+              ),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
@@ -301,7 +462,9 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
                 DropdownMenuItem(value: 'Other', child: Text('Other')),
               ],
               onChanged: (value) {
-                if (value == null) return;
+                if (value == null) {
+                  return;
+                }
 
                 setState(() {
                   _selectedCategory = value;
@@ -314,9 +477,10 @@ class _EditExpenseDialogState extends State<EditExpenseDialog> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Amount',
                 prefixText: '¥ ',
+                errorText: _amountError,
               ),
             ),
             const SizedBox(height: 16),

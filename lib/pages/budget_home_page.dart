@@ -79,107 +79,14 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   Future<void> _addExpense() async {
-    final descriptionController = TextEditingController();
-    final amountController = TextEditingController();
-
-    String selectedCategory = 'Food';
-
     final result = await showDialog<Expense>(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Add Expense'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedCategory,
-                    decoration: const InputDecoration(labelText: 'Category'),
-                    items: const [
-                      DropdownMenuItem(value: 'Food', child: Text('Food')),
-                      DropdownMenuItem(
-                        value: 'Transportation',
-                        child: Text('Transportation'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Shopping',
-                        child: Text('Shopping'),
-                      ),
-                      DropdownMenuItem(value: 'Other', child: Text('Other')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() {
-                          selectedCategory = value;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descriptionController,
-                    decoration: const InputDecoration(labelText: 'Description'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Amount',
-                      prefixText: '¥ ',
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final description = descriptionController.text.trim();
-
-                    final amount = double.tryParse(
-                      amountController.text.trim(),
-                    );
-
-                    if (description.isEmpty || amount == null) {
-                      return;
-                    }
-
-                    Navigator.pop(
-                      context,
-                      Expense(
-                        tripId: trip.id,
-                        category: selectedCategory,
-                        description: description,
-                        dailyAmounts: {
-                          DateTime(
-                            DateTime.now().year,
-                            DateTime.now().month,
-                            DateTime.now().day,
-                          ): amount,
-                        },
-                        icon: ExpenseStorageService.getIcon(selectedCategory),
-                      ),
-                    );
-                  },
-                  child: const Text('Add'),
-                ),
-              ],
-            );
-          },
-        );
+      builder: (dialogContext) {
+        return AddExpenseDialog(trip: trip);
       },
     );
 
-    // descriptionController.dispose();
-    // amountController.dispose();
-
-    if (result == null) {
+    if (result == null || !mounted) {
       return;
     }
 
@@ -195,33 +102,26 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   List<Expense> get todaysExpenses {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = DateTime.now();
+
+    final todayDate = DateTime(today.year, today.month, today.day);
 
     return expenses.where((expense) {
-      return expense.dailyAmounts.keys.any((date) {
-        final expenseDate = DateTime(date.year, date.month, date.day);
+      final amount = expense.dailyAmounts[todayDate] ?? 0;
 
-        return expenseDate == today;
-      });
+      return amount > 0;
     }).toList();
   }
 
   double get todaysSpending {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = DateTime.now();
 
-    return expenses.fold(0, (sum, expense) {
-      for (final entry in expense.dailyAmounts.entries) {
-        final date = DateTime(entry.key.year, entry.key.month, entry.key.day);
+    final todayDate = DateTime(today.year, today.month, today.day);
 
-        if (date == today) {
-          sum += entry.value;
-        }
-      }
-
-      return sum;
-    });
+    return expenses.fold(
+      0,
+      (sum, expense) => sum + (expense.dailyAmounts[todayDate] ?? 0),
+    );
   }
 
   double get dailyBudgetDifference {
@@ -271,6 +171,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       ),
     );
 
+    if (!mounted) return;
+
     if (updatedExpenses != null) {
       setState(() {
         expenses = updatedExpenses;
@@ -307,6 +209,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               '${_formatDate(trip.startDate)} → ${_formatDate(trip.endDate)}',
               style: const TextStyle(color: Colors.grey, fontSize: 14),
             ),
+
             const SizedBox(height: 4),
 
             Text(
@@ -326,7 +229,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       'Remaining Budget',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
+
                     const SizedBox(height: 8),
+
                     Text(
                       '¥${remainingBudget.toStringAsFixed(0)}',
                       style: const TextStyle(
@@ -349,7 +254,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       'Recommended Daily Budget',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
+
                     const SizedBox(height: 8),
+
                     Text(
                       '¥${recommendedDailyBudget.toStringAsFixed(0)}',
                       style: const TextStyle(
@@ -357,7 +264,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 4),
+
                     const Text(
                       'Based on your remaining budget and trip days',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
@@ -366,6 +275,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 ),
               ),
             ),
+
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -376,7 +286,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       'Spending Forecast',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
+
                     const SizedBox(height: 8),
+
                     Text(
                       '¥${projectedTotalSpending.toStringAsFixed(0)}',
                       style: const TextStyle(
@@ -384,12 +296,16 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 4),
+
                     const Text(
                       'Projected total spending',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
+
                     const SizedBox(height: 12),
+
                     Text(
                       projectedRemainingBudget >= 0
                           ? 'Projected remaining: ¥${projectedRemainingBudget.toStringAsFixed(0)}'
@@ -411,7 +327,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     value: '¥${trip.allowance.toStringAsFixed(0)}',
                   ),
                 ),
+
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: SummaryCard(
                     title: 'Spent',
@@ -430,12 +348,14 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   "Today's Spending",
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
+
                 TextButton(
                   onPressed: _openExpenseHistory,
                   child: const Text('View All'),
                 ),
               ],
             ),
+
             const SizedBox(height: 4),
 
             Text(
@@ -449,6 +369,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               dailyBudgetStatus,
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
+
             Text(
               dailyBudgetDifference >= 0
                   ? '¥${dailyBudgetDifference.toStringAsFixed(0)} remaining for today'
@@ -465,27 +386,18 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
 
             ...todaysExpenses.map((expense) {
-              final now = DateTime.now();
-              final today = DateTime(now.year, now.month, now.day);
+              final today = DateTime.now();
 
-              final todayAmount = expense.dailyAmounts.entries
-                  .where(
-                    (entry) =>
-                        DateTime(
-                          entry.key.year,
-                          entry.key.month,
-                          entry.key.day,
-                        ) ==
-                        today,
-                  )
-                  .fold<double>(0, (sum, entry) => sum + entry.value);
+              final todayDate = DateTime(today.year, today.month, today.day);
+
+              final amount = expense.dailyAmounts[todayDate] ?? 0;
 
               return ExpenseItem(
                 category: expense.category,
                 description: expense.description,
-                amount: todayAmount,
+                amount: amount,
                 icon: expense.icon,
-                date: _formatDate(today),
+                date: _formatDate(todayDate),
               );
             }),
           ],
@@ -497,6 +409,365 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         icon: const Icon(Icons.add),
         label: const Text('Add Expense'),
       ),
+    );
+  }
+}
+
+class AddExpenseDialog extends StatefulWidget {
+  final Trip trip;
+
+  const AddExpenseDialog({super.key, required this.trip});
+
+  @override
+  State<AddExpenseDialog> createState() => _AddExpenseDialogState();
+}
+
+class _AddExpenseDialogState extends State<AddExpenseDialog> {
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _amountController;
+
+  String _selectedCategory = 'Food';
+
+  DateTime _selectedDate = DateTime.now();
+
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
+
+  bool _spreadAcrossDays = false;
+
+  String? _amountError;
+  String? _descriptionError;
+  String? _dateError;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _descriptionController = TextEditingController();
+    _amountController = TextEditingController();
+
+    final today = DateTime.now();
+
+    final tripStart = DateTime(
+      widget.trip.startDate.year,
+      widget.trip.startDate.month,
+      widget.trip.startDate.day,
+    );
+
+    final tripEnd = DateTime(
+      widget.trip.endDate.year,
+      widget.trip.endDate.month,
+      widget.trip.endDate.day,
+    );
+
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    if (todayDate.isBefore(tripStart)) {
+      _selectedDate = tripStart;
+    } else if (todayDate.isAfter(tripEnd)) {
+      _selectedDate = tripEnd;
+    } else {
+      _selectedDate = todayDate;
+    }
+  }
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    _amountController.dispose();
+
+    super.dispose();
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  String _dateText() {
+    if (!_spreadAcrossDays) {
+      return _formatDate(_selectedDate);
+    }
+
+    if (_rangeStart == null || _rangeEnd == null) {
+      return 'Select date range';
+    }
+
+    return '${_formatDate(_rangeStart!)} → ${_formatDate(_rangeEnd!)}';
+  }
+
+  Future<void> _selectDate() async {
+    if (_spreadAcrossDays) {
+      final initialRange = _rangeStart != null && _rangeEnd != null
+          ? DateTimeRange(start: _rangeStart!, end: _rangeEnd!)
+          : null;
+
+      final pickedRange = await showDateRangePicker(
+        context: context,
+        firstDate: widget.trip.startDate,
+        lastDate: widget.trip.endDate,
+        initialDateRange: initialRange,
+      );
+
+      if (pickedRange == null || !mounted) {
+        return;
+      }
+
+      setState(() {
+        _rangeStart = DateTime(
+          pickedRange.start.year,
+          pickedRange.start.month,
+          pickedRange.start.day,
+        );
+
+        _rangeEnd = DateTime(
+          pickedRange.end.year,
+          pickedRange.end.month,
+          pickedRange.end.day,
+        );
+
+        _dateError = null;
+      });
+
+      return;
+    }
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: widget.trip.startDate,
+      lastDate: widget.trip.endDate,
+    );
+
+    if (pickedDate == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedDate = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+      );
+
+      _dateError = null;
+    });
+  }
+
+  Map<DateTime, double> _buildDailyAmounts(double totalAmount) {
+    if (!_spreadAcrossDays) {
+      return {_selectedDate: totalAmount};
+    }
+
+    final start = _rangeStart!;
+    final end = _rangeEnd!;
+
+    final numberOfDays = end.difference(start).inDays + 1;
+
+    final dailyAmount = totalAmount / numberOfDays;
+
+    final dailyAmounts = <DateTime, double>{};
+
+    for (var i = 0; i < numberOfDays; i++) {
+      final date = start.add(Duration(days: i));
+
+      dailyAmounts[DateTime(date.year, date.month, date.day)] = dailyAmount;
+    }
+
+    return dailyAmounts;
+  }
+
+  void _save() {
+    final description = _descriptionController.text.trim();
+
+    final amountText = _amountController.text.trim();
+
+    String? descriptionError;
+    String? amountError;
+    String? dateError;
+
+    if (description.isEmpty) {
+      descriptionError = 'Please enter a description.';
+    }
+
+    final amount = double.tryParse(amountText);
+
+    if (amountText.isEmpty) {
+      amountError = 'Please enter an amount.';
+    } else if (amount == null) {
+      amountError = 'Please enter a valid number.';
+    } else if (amount <= 0) {
+      amountError = 'Amount must be greater than 0.';
+    }
+
+    if (_spreadAcrossDays && (_rangeStart == null || _rangeEnd == null)) {
+      dateError = 'Please select a date range.';
+    }
+
+    if (descriptionError != null || amountError != null || dateError != null) {
+      setState(() {
+        _descriptionError = descriptionError;
+
+        _amountError = amountError;
+
+        _dateError = dateError;
+      });
+
+      return;
+    }
+
+    final dailyAmounts = _buildDailyAmounts(amount!);
+
+    final expense = Expense(
+      tripId: widget.trip.id,
+      category: _selectedCategory,
+      description: description,
+      dailyAmounts: dailyAmounts,
+      icon: ExpenseStorageService.getIcon(_selectedCategory),
+    );
+
+    Navigator.of(context).pop(expense);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add Expense'),
+
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _selectedCategory,
+
+              decoration: const InputDecoration(labelText: 'Category'),
+
+              items: const [
+                DropdownMenuItem(value: 'Food', child: Text('Food')),
+                DropdownMenuItem(
+                  value: 'Transportation',
+                  child: Text('Transportation'),
+                ),
+                DropdownMenuItem(value: 'Shopping', child: Text('Shopping')),
+                DropdownMenuItem(value: 'Other', child: Text('Other')),
+              ],
+
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+
+                setState(() {
+                  _selectedCategory = value;
+                });
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: _descriptionController,
+
+              decoration: InputDecoration(
+                labelText: 'Description',
+                errorText: _descriptionError,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: _amountController,
+
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+
+              decoration: InputDecoration(
+                labelText: 'Amount',
+                prefixText: '¥ ',
+                errorText: _amountError,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+
+              leading: const Icon(Icons.calendar_today),
+
+              title: const Text('Date'),
+
+              subtitle: Text(_dateText()),
+
+              onTap: _selectDate,
+            ),
+
+            if (_dateError != null)
+              Align(
+                alignment: Alignment.centerLeft,
+
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 8),
+
+                  child: Text(
+                    _dateError!,
+
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+
+              title: const Text('Spread across days'),
+
+              subtitle: const Text(
+                'Divide the expense equally across the selected dates',
+              ),
+
+              value: _spreadAcrossDays,
+
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+
+                setState(() {
+                  _spreadAcrossDays = value;
+
+                  _dateError = null;
+
+                  if (value) {
+                    _rangeStart = _selectedDate;
+
+                    _rangeEnd = _selectedDate;
+                  } else {
+                    _rangeStart = null;
+                    _rangeEnd = null;
+                  }
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+
+        FilledButton(onPressed: _save, child: const Text('Add')),
+      ],
     );
   }
 }
