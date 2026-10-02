@@ -22,6 +22,28 @@ class _EditTripPageState extends State<EditTripPage> {
   late DateTime _startDate;
   late DateTime _endDate;
 
+  late String _selectedCurrency;
+
+  bool _isConverting = false;
+
+  static const Map<String, String> _currencies = {
+    'JPY': 'Japanese Yen',
+    'USD': 'US Dollar',
+    'PHP': 'Philippine Peso',
+    'EUR': 'Euro',
+    'GBP': 'British Pound',
+    'KRW': 'South Korean Won',
+    'CNY': 'Chinese Yuan',
+    'SGD': 'Singapore Dollar',
+    'AUD': 'Australian Dollar',
+    'CAD': 'Canadian Dollar',
+    'HKD': 'Hong Kong Dollar',
+    'TWD': 'New Taiwan Dollar',
+    'THB': 'Thai Baht',
+    'MYR': 'Malaysian Ringgit',
+    'IDR': 'Indonesian Rupiah',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -29,11 +51,13 @@ class _EditTripPageState extends State<EditTripPage> {
     _nameController = TextEditingController(text: widget.trip.name);
 
     _allowanceController = TextEditingController(
-      text: widget.trip.allowance.toStringAsFixed(0),
+      text: widget.trip.allowance.toStringAsFixed(2),
     );
 
     _startDate = widget.trip.startDate;
     _endDate = widget.trip.endDate;
+
+    _selectedCurrency = widget.trip.currencyCode;
   }
 
   @override
@@ -42,6 +66,76 @@ class _EditTripPageState extends State<EditTripPage> {
     _allowanceController.dispose();
 
     super.dispose();
+  }
+
+  String _currencySymbol(String currencyCode) {
+    return CurrencyService.getSymbol(currencyCode);
+  }
+
+  Future<void> _changeCurrency(String newCurrency) async {
+    if (newCurrency == _selectedCurrency) {
+      return;
+    }
+
+    final currentAllowance = double.tryParse(
+      _allowanceController.text.trim().replaceAll(',', ''),
+    );
+
+    if (currentAllowance == null || currentAllowance <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please enter a valid allowance before changing currency.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final oldCurrency = _selectedCurrency;
+
+    setState(() {
+      _isConverting = true;
+    });
+
+    try {
+      final rate = await CurrencyService.getExchangeRate(
+        oldCurrency,
+        newCurrency,
+      );
+
+      final convertedAllowance = currentAllowance * rate;
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _selectedCurrency = newCurrency;
+
+        _allowanceController.text = convertedAllowance.toStringAsFixed(2);
+
+        _allowanceController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _allowanceController.text.length),
+        );
+
+        _isConverting = false;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isConverting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to get the latest exchange rate.'),
+        ),
+      );
+    }
   }
 
   Future<void> _selectStartDate() async {
@@ -74,7 +168,7 @@ class _EditTripPageState extends State<EditTripPage> {
       context: context,
       firstDate: _startDate,
       lastDate: DateTime(2100),
-      initialDate: _endDate.isBefore(_startDate) ? _startDate : _endDate,
+      initialDate: _endDate,
     );
 
     if (selectedDate == null || !mounted) {
@@ -97,14 +191,24 @@ class _EditTripPageState extends State<EditTripPage> {
       _allowanceController.text.trim().replaceAll(',', ''),
     );
 
-    if (name.isEmpty ||
-        allowance == null ||
-        allowance <= 0 ||
-        _endDate.isBefore(_startDate)) {
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please complete all fields correctly.')),
+        const SnackBar(content: Text('Please enter a trip name.')),
       );
+      return;
+    }
 
+    if (allowance == null || allowance <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid allowance.')),
+      );
+      return;
+    }
+
+    if (_endDate.isBefore(_startDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('End date cannot be before start date.')),
+      );
       return;
     }
 
@@ -114,10 +218,7 @@ class _EditTripPageState extends State<EditTripPage> {
       allowance: allowance,
       startDate: _startDate,
       endDate: _endDate,
-
-      // IMPORTANT:
-      // Keep the currency that belongs to this trip.
-      currencyCode: widget.trip.currencyCode,
+      currencyCode: _selectedCurrency,
     );
 
     await _tripStorageService.saveTrip(updatedTrip);
@@ -137,7 +238,7 @@ class _EditTripPageState extends State<EditTripPage> {
 
   @override
   Widget build(BuildContext context) {
-    final currencySymbol = CurrencyService.getSymbol(widget.trip.currencyCode);
+    final currencySymbol = _currencySymbol(_selectedCurrency);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Trip')),
@@ -146,10 +247,42 @@ class _EditTripPageState extends State<EditTripPage> {
         children: [
           TextField(
             controller: _nameController,
+            textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
               labelText: 'Trip Name',
               border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.work_outline),
             ),
+          ),
+
+          const SizedBox(height: 16),
+
+          DropdownButtonFormField<String>(
+            initialValue: _selectedCurrency,
+            decoration: const InputDecoration(
+              labelText: 'Currency',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.currency_exchange),
+            ),
+            items: _currencies.entries.map((entry) {
+              final code = entry.key;
+              final name = entry.value;
+              final symbol = _currencySymbol(code);
+
+              return DropdownMenuItem<String>(
+                value: code,
+                child: Text('$code - $name ($symbol)'),
+              );
+            }).toList(),
+            onChanged: _isConverting
+                ? null
+                : (value) {
+                    if (value == null) {
+                      return;
+                    }
+
+                    _changeCurrency(value);
+                  },
           ),
 
           const SizedBox(height: 16),
@@ -164,12 +297,23 @@ class _EditTripPageState extends State<EditTripPage> {
             ),
           ),
 
-          const SizedBox(height: 8),
-
-          Text(
-            'Currency: ${widget.trip.currencyCode}',
-            style: const TextStyle(color: Colors.grey, fontSize: 13),
-          ),
+          if (_isConverting) ...[
+            const SizedBox(height: 8),
+            const Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Converting allowance...',
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 16),
 
@@ -178,6 +322,7 @@ class _EditTripPageState extends State<EditTripPage> {
               leading: const Icon(Icons.calendar_today),
               title: const Text('Start Date'),
               subtitle: Text(_formatDate(_startDate)),
+              trailing: const Icon(Icons.chevron_right),
               onTap: _selectStartDate,
             ),
           ),
@@ -189,6 +334,7 @@ class _EditTripPageState extends State<EditTripPage> {
               leading: const Icon(Icons.event),
               title: const Text('End Date'),
               subtitle: Text(_formatDate(_endDate)),
+              trailing: const Icon(Icons.chevron_right),
               onTap: _selectEndDate,
             ),
           ),
@@ -196,7 +342,7 @@ class _EditTripPageState extends State<EditTripPage> {
           const SizedBox(height: 24),
 
           FilledButton.icon(
-            onPressed: _saveTrip,
+            onPressed: _isConverting ? null : _saveTrip,
             icon: const Icon(Icons.save),
             label: const Text('Save Changes'),
           ),

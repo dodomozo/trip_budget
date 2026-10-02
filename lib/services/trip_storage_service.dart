@@ -34,7 +34,7 @@ class TripStorageService {
       trip.endDate.toIso8601String(),
     );
 
-    // Save the currency selected for this specific trip.
+    // Save the currency belonging to this trip.
     await prefs.setString(_key(trip.id, 'currency_code'), trip.currencyCode);
   }
 
@@ -54,8 +54,8 @@ class TripStorageService {
 
       final endDateString = prefs.getString(_key(tripId, 'end_date'));
 
-      // Existing trips created before currency persistence was added
-      // will default to JPY.
+      // Older trips may not have a saved currency.
+      // Keep JPY as the backward-compatible default.
       final currencyCode =
           prefs.getString(_key(tripId, 'currency_code')) ?? 'JPY';
 
@@ -92,8 +92,6 @@ class TripStorageService {
 
     final endDateString = prefs.getString(_key(tripId, 'end_date'));
 
-    // Existing trips created before currency persistence was added
-    // will default to JPY.
     final currencyCode =
         prefs.getString(_key(tripId, 'currency_code')) ?? 'JPY';
 
@@ -124,9 +122,13 @@ class TripStorageService {
     await prefs.setStringList(_tripIdsKey, tripIds);
 
     await prefs.remove(_key(tripId, 'name'));
+
     await prefs.remove(_key(tripId, 'allowance'));
+
     await prefs.remove(_key(tripId, 'start_date'));
+
     await prefs.remove(_key(tripId, 'end_date'));
+
     await prefs.remove(_key(tripId, 'currency_code'));
   }
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/expense.dart';
-import '../services/currency_service.dart';
 import '../services/expense_storage_service.dart';
+import '../services/currency_service.dart';
 import '../widgets/expense_item.dart';
 
 class _ExpenseDayEntry {
@@ -19,13 +19,17 @@ class _ExpenseDayEntry {
 
 class ExpenseHistoryPage extends StatefulWidget {
   final String tripId;
-  final String currencyCode;
+  final String tripCurrencyCode;
+  final String displayCurrencyCode;
+  final double exchangeRate;
   final List<Expense> expenses;
 
   const ExpenseHistoryPage({
     super.key,
     required this.tripId,
-    required this.currencyCode,
+    required this.tripCurrencyCode,
+    required this.displayCurrencyCode,
+    required this.exchangeRate,
     required this.expenses,
   });
 
@@ -50,6 +54,17 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
 
   DateTime _dateOnly(DateTime date) {
     return DateTime(date.year, date.month, date.day);
+  }
+
+  double _convertAmount(double amount) {
+    return amount * widget.exchangeRate;
+  }
+
+  String _formatAmount(double amount) {
+    return CurrencyService.format(
+      _convertAmount(amount),
+      widget.displayCurrencyCode,
+    );
   }
 
   List<_ExpenseDayEntry> _buildDailyEntries() {
@@ -88,6 +103,7 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
 
   Future<void> _saveExpenses() async {
     final storage = ExpenseStorageService();
+
     await storage.saveExpenses(widget.tripId, expenses);
   }
 
@@ -98,8 +114,7 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
         return AlertDialog(
           title: const Text('Delete Expense Portion?'),
           content: Text(
-            'Delete '
-            '${CurrencyService.format(entry.amount, widget.currencyCode)} '
+            'Delete ${_formatAmount(entry.amount)} '
             '${entry.expense.description} '
             'for ${_formatDate(entry.date)}?',
           ),
@@ -172,12 +187,12 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
       context: context,
       builder: (dialogContext) {
         return EditExpensePortionDialog(
-          tripId: entry.expense.tripId,
-          currencyCode: widget.currencyCode,
           description: entry.expense.description,
           category: entry.expense.category,
           amount: entry.amount,
           date: entry.date,
+          tripId: entry.expense.tripId,
+          currencyCode: widget.tripCurrencyCode,
         );
       },
     );
@@ -198,10 +213,8 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
       originalExpense.dailyAmounts,
     );
 
-    // Remove the original day's portion.
     updatedDailyAmounts.remove(entry.date);
 
-    // Add the edited portion to its new date.
     updatedDailyAmounts[updatedPortion.date] = updatedPortion.amount;
 
     final updatedExpense = Expense(
@@ -284,10 +297,10 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
                     child: ExpenseItem(
                       category: entry.expense.category,
                       description: entry.expense.description,
-                      amount: entry.amount,
+                      amount: _convertAmount(entry.amount),
                       icon: entry.expense.icon,
                       date: _formatDate(entry.date),
-                      currencyCode: widget.currencyCode,
+                      currencyCode: widget.displayCurrencyCode,
                     ),
                   ),
                 );
@@ -315,20 +328,20 @@ class _EditedExpensePortion {
 
 class EditExpensePortionDialog extends StatefulWidget {
   final String tripId;
-  final String currencyCode;
   final String description;
   final String category;
   final double amount;
   final DateTime date;
+  final String currencyCode;
 
   const EditExpensePortionDialog({
     super.key,
     required this.tripId,
-    required this.currencyCode,
     required this.description,
     required this.category,
     required this.amount,
     required this.date,
+    required this.currencyCode,
   });
 
   @override
@@ -402,6 +415,7 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
 
   void _save() {
     final description = _descriptionController.text.trim();
+
     final amountText = _amountController.text.trim();
 
     final amount = double.tryParse(amountText);

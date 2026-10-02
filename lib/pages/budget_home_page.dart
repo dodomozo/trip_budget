@@ -23,7 +23,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   List<Expense> expenses = [];
 
-  String _displayCurrency = 'JPY';
+  late String _displayCurrency;
 
   double _exchangeRate = 1.0;
 
@@ -35,6 +35,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
     trip = widget.trip;
 
+    // Display currency initially matches the trip currency.
     _displayCurrency = trip.currencyCode;
 
     _loadExpenses();
@@ -45,7 +46,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
     final loadedExpenses = await storage.loadExpenses(trip.id);
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       expenses = loadedExpenses;
@@ -81,7 +84,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         currencyCode,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _displayCurrency = currencyCode;
@@ -89,7 +94,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         _isConverting = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _isConverting = false;
@@ -225,15 +232,21 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     final updatedExpenses = await Navigator.push<List<Expense>>(
       context,
       MaterialPageRoute(
-        builder: (context) => ExpenseHistoryPage(
-          tripId: trip.id,
-          currencyCode: trip.currencyCode,
-          expenses: expenses,
-        ),
+        builder: (context) {
+          return ExpenseHistoryPage(
+            tripId: trip.id,
+            tripCurrencyCode: trip.currencyCode,
+            displayCurrencyCode: _displayCurrency,
+            exchangeRate: _exchangeRate,
+            expenses: expenses,
+          );
+        },
       ),
     );
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     if (updatedExpenses != null) {
       setState(() {
@@ -279,17 +292,15 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _displayCurrency,
-                  items: CurrencyService.supportedCurrencies
-                      .map(
-                        (currency) => DropdownMenuItem<String>(
-                          value: currency,
-                          child: Text(
-                            '$currency '
-                            '(${CurrencyService.getSymbol(currency)})',
-                          ),
-                        ),
-                      )
-                      .toList(),
+                  items: CurrencyService.supportedCurrencies.map((currency) {
+                    return DropdownMenuItem<String>(
+                      value: currency,
+                      child: Text(
+                        '$currency '
+                        '(${CurrencyService.getSymbol(currency)})',
+                      ),
+                    );
+                  }).toList(),
                   onChanged: (value) {
                     if (value == null) {
                       return;
@@ -323,13 +334,10 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           ),
         ],
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-
           children: [
             const SizedBox(height: 4),
 
@@ -355,10 +363,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     const Text(
                       'Remaining Budget',
@@ -382,10 +388,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     const Text(
                       'Recommended Daily Budget',
@@ -417,10 +421,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     const Text(
                       'Spending Forecast',
@@ -485,7 +487,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
               children: [
                 const Text(
                   "Today's Spending",
@@ -516,8 +517,10 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
             Text(
               dailyBudgetDifference >= 0
-                  ? '${_formatAmount(dailyBudgetDifference)} remaining for today'
-                  : '${_formatAmount(dailyBudgetDifference.abs())} over today\'s budget',
+                  ? '${_formatAmount(dailyBudgetDifference)} '
+                        'remaining for today'
+                  : '${_formatAmount(dailyBudgetDifference.abs())} '
+                        'over today\'s budget',
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
 
@@ -539,16 +542,15 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               return ExpenseItem(
                 category: expense.category,
                 description: expense.description,
-                amount: amount,
+                amount: _convertAmount(amount),
                 icon: expense.icon,
                 date: _formatDate(todayDate),
-                currencyCode: trip.currencyCode,
+                currencyCode: _displayCurrency,
               );
             }),
           ],
         ),
       ),
-
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addExpense,
         icon: const Icon(Icons.add),
@@ -782,16 +784,13 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Add Expense'),
-
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
               initialValue: _selectedCategory,
-
               decoration: const InputDecoration(labelText: 'Category'),
-
               items: const [
                 DropdownMenuItem(value: 'Food', child: Text('Food')),
                 DropdownMenuItem(
@@ -801,7 +800,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                 DropdownMenuItem(value: 'Shopping', child: Text('Shopping')),
                 DropdownMenuItem(value: 'Other', child: Text('Other')),
               ],
-
               onChanged: (value) {
                 if (value == null) {
                   return;
@@ -817,7 +815,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
             TextField(
               controller: _descriptionController,
-
               decoration: InputDecoration(
                 labelText: 'Description',
                 errorText: _descriptionError,
@@ -828,11 +825,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
             TextField(
               controller: _amountController,
-
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-
               decoration: InputDecoration(
                 labelText: 'Amount',
                 prefixText:
@@ -845,26 +840,19 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
             ListTile(
               contentPadding: EdgeInsets.zero,
-
               leading: const Icon(Icons.calendar_today),
-
               title: const Text('Date'),
-
               subtitle: Text(_dateText()),
-
               onTap: _selectDate,
             ),
 
             if (_dateError != null)
               Align(
                 alignment: Alignment.centerLeft,
-
                 child: Padding(
                   padding: const EdgeInsets.only(left: 16, bottom: 8),
-
                   child: Text(
                     _dateError!,
-
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
                       fontSize: 12,
@@ -875,16 +863,12 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
-
               title: const Text('Spread across days'),
-
               subtitle: const Text(
                 'Divide the expense equally '
                 'across the selected dates',
               ),
-
               value: _spreadAcrossDays,
-
               onChanged: (value) {
                 if (value == null) {
                   return;
@@ -901,7 +885,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                     _rangeEnd = _selectedDate;
                   } else {
                     _rangeStart = null;
-
                     _rangeEnd = null;
                   }
                 });
@@ -910,7 +893,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
           ],
         ),
       ),
-
       actions: [
         TextButton(
           onPressed: () {
@@ -918,7 +900,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
           },
           child: const Text('Cancel'),
         ),
-
         FilledButton(onPressed: _save, child: const Text('Add')),
       ],
     );
