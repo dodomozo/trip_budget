@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/expense.dart';
+import '../services/currency_service.dart';
 import '../services/expense_storage_service.dart';
 import '../widgets/expense_item.dart';
 
@@ -18,11 +19,13 @@ class _ExpenseDayEntry {
 
 class ExpenseHistoryPage extends StatefulWidget {
   final String tripId;
+  final String currencyCode;
   final List<Expense> expenses;
 
   const ExpenseHistoryPage({
     super.key,
     required this.tripId,
+    required this.currencyCode,
     required this.expenses,
   });
 
@@ -40,7 +43,9 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 
   DateTime _dateOnly(DateTime date) {
@@ -93,7 +98,9 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
         return AlertDialog(
           title: const Text('Delete Expense Portion?'),
           content: Text(
-            'Delete ${entry.descriptionForDialog} '
+            'Delete '
+            '${CurrencyService.format(entry.amount, widget.currencyCode)} '
+            '${entry.expense.description} '
             'for ${_formatDate(entry.date)}?',
           ),
           actions: [
@@ -153,7 +160,8 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '${entry.expense.description} on ${_formatDate(entry.date)} deleted',
+          '${entry.expense.description} on '
+          '${_formatDate(entry.date)} deleted',
         ),
       ),
     );
@@ -164,11 +172,12 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
       context: context,
       builder: (dialogContext) {
         return EditExpensePortionDialog(
+          tripId: entry.expense.tripId,
+          currencyCode: widget.currencyCode,
           description: entry.expense.description,
           category: entry.expense.category,
           amount: entry.amount,
           date: entry.date,
-          tripId: entry.expense.tripId,
         );
       },
     );
@@ -278,18 +287,13 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
                       amount: entry.amount,
                       icon: entry.expense.icon,
                       date: _formatDate(entry.date),
+                      currencyCode: widget.currencyCode,
                     ),
                   ),
                 );
               },
             ),
     );
-  }
-}
-
-extension on _ExpenseDayEntry {
-  String get descriptionForDialog {
-    return '¥${amount.toStringAsFixed(0)} ${expense.description}';
   }
 }
 
@@ -311,6 +315,7 @@ class _EditedExpensePortion {
 
 class EditExpensePortionDialog extends StatefulWidget {
   final String tripId;
+  final String currencyCode;
   final String description;
   final String category;
   final double amount;
@@ -319,6 +324,7 @@ class EditExpensePortionDialog extends StatefulWidget {
   const EditExpensePortionDialog({
     super.key,
     required this.tripId,
+    required this.currencyCode,
     required this.description,
     required this.category,
     required this.amount,
@@ -368,7 +374,9 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _selectDate() async {
@@ -435,6 +443,8 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final currencySymbol = CurrencyService.getSymbol(widget.currencyCode);
+
     return AlertDialog(
       title: const Text('Edit Expense'),
       content: SingleChildScrollView(
@@ -448,7 +458,9 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
                 errorText: _descriptionError,
               ),
             ),
+
             const SizedBox(height: 16),
+
             DropdownButtonFormField<String>(
               initialValue: _selectedCategory,
               decoration: const InputDecoration(labelText: 'Category'),
@@ -471,7 +483,9 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
                 });
               },
             ),
+
             const SizedBox(height: 16),
+
             TextField(
               controller: _amountController,
               keyboardType: const TextInputType.numberWithOptions(
@@ -479,11 +493,13 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
               ),
               decoration: InputDecoration(
                 labelText: 'Amount',
-                prefixText: '¥ ',
+                prefixText: '$currencySymbol ',
                 errorText: _amountError,
               ),
             ),
+
             const SizedBox(height: 16),
+
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.calendar_today),

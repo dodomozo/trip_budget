@@ -47,19 +47,13 @@ class CurrencyService {
     return currencySymbols[currencyCode] ?? currencyCode;
   }
 
-  static String format(
-    double amount,
-    String currencyCode,
-  ) {
+  static String format(double amount, String currencyCode) {
     final symbol = getSymbol(currencyCode);
 
     return '$symbol${amount.toStringAsFixed(0)}';
   }
 
-  static String formatAmount(
-    double amount,
-    String currencyCode,
-  ) {
+  static String formatAmount(double amount, String currencyCode) {
     return format(amount, currencyCode);
   }
 
@@ -89,9 +83,7 @@ class CurrencyService {
     final response = await http.get(uri);
 
     if (response.statusCode != 200) {
-      throw Exception(
-        'Failed to get exchange rate: ${response.statusCode}',
-      );
+      throw Exception('Failed to get exchange rate: ${response.statusCode}');
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -115,10 +107,7 @@ class CurrencyService {
       return amount;
     }
 
-    final rate = await getExchangeRate(
-      fromCurrency,
-      toCurrency,
-    );
+    final rate = await getExchangeRate(fromCurrency, toCurrency);
 
     return amount * rate;
   }

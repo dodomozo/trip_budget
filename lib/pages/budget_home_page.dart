@@ -7,6 +7,7 @@ import '../models/trip.dart';
 import '../widgets/expense_item.dart';
 import '../widgets/summary_card.dart';
 import '../services/expense_storage_service.dart';
+import '../services/currency_service.dart';
 
 class BudgetHomePage extends StatefulWidget {
   final Trip trip;
@@ -19,7 +20,14 @@ class BudgetHomePage extends StatefulWidget {
 
 class _BudgetHomePageState extends State<BudgetHomePage> {
   late Trip trip;
+
   List<Expense> expenses = [];
+
+  String _displayCurrency = 'JPY';
+
+  double _exchangeRate = 1.0;
+
+  bool _isConverting = false;
 
   @override
   void initState() {
@@ -27,11 +35,14 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
     trip = widget.trip;
 
+    _displayCurrency = trip.currencyCode;
+
     _loadExpenses();
   }
 
   Future<void> _loadExpenses() async {
     final storage = ExpenseStorageService();
+
     final loadedExpenses = await storage.loadExpenses(trip.id);
 
     if (!mounted) return;
@@ -43,23 +54,53 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   Future<void> _saveExpenses() async {
     final storage = ExpenseStorageService();
+
     await storage.saveExpenses(trip.id, expenses);
   }
 
-  DateTime _dateOnly(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
+  double _convertAmount(double amount) {
+    return amount * _exchangeRate;
   }
 
-  DateTime get today {
-    return _dateOnly(DateTime.now());
+  String _formatAmount(double amount) {
+    return CurrencyService.format(_convertAmount(amount), _displayCurrency);
   }
 
-  DateTime get tripStart {
-    return _dateOnly(trip.startDate);
-  }
+  Future<void> _changeDisplayCurrency(String currencyCode) async {
+    if (currencyCode == _displayCurrency) {
+      return;
+    }
 
-  DateTime get tripEnd {
-    return _dateOnly(trip.endDate);
+    setState(() {
+      _isConverting = true;
+    });
+
+    try {
+      final rate = await CurrencyService.getExchangeRate(
+        trip.currencyCode,
+        currencyCode,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _displayCurrency = currencyCode;
+        _exchangeRate = rate;
+        _isConverting = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isConverting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to get the latest exchange rate.'),
+        ),
+      );
+    }
   }
 
   double get totalSpent {
@@ -71,27 +112,19 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   int get remainingDays {
-    if (today.isBefore(tripStart)) {
-      return trip.totalDays;
-    }
+    final today = DateTime.now();
 
-    if (today.isAfter(tripEnd)) {
-      return 0;
-    }
+    final todayDate = DateTime(today.year, today.month, today.day);
 
-    return tripEnd.difference(today).inDays + 1;
-  }
+    final endDate = DateTime(
+      trip.endDate.year,
+      trip.endDate.month,
+      trip.endDate.day,
+    );
 
-  int get elapsedTripDays {
-    if (today.isBefore(tripStart)) {
-      return 0;
-    }
+    final days = endDate.difference(todayDate).inDays;
 
-    if (today.isAfter(tripEnd)) {
-      return trip.totalDays;
-    }
-
-    return today.difference(tripStart).inDays + 1;
+    return days < 0 ? 0 : days + 1;
   }
 
   double get recommendedDailyBudget {
@@ -100,75 +133,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     }
 
     return remainingBudget / remainingDays;
-  }
-
-  List<Expense> get todaysExpenses {
-    return expenses.where((expense) {
-      final amount = expense.dailyAmounts[today] ?? 0;
-
-      return amount > 0;
-    }).toList();
-  }
-
-  double get todaysSpending {
-    return expenses.fold(
-      0,
-      (sum, expense) => sum + (expense.dailyAmounts[today] ?? 0),
-    );
-  }
-
-  double get dailyBudgetDifference {
-    return recommendedDailyBudget - todaysSpending;
-  }
-
-  /// Total amount actually spent from the beginning of the trip
-  /// through today, using the daily portions of each expense.
-  double get actualSpendingUntilToday {
-    return expenses.fold(0, (sum, expense) {
-      double expenseTotal = 0;
-
-      for (final entry in expense.dailyAmounts.entries) {
-        final date = _dateOnly(entry.key);
-
-        if (!date.isAfter(today)) {
-          expenseTotal += entry.value;
-        }
-      }
-
-      return sum + expenseTotal;
-    });
-  }
-
-  double get averageDailySpending {
-    if (elapsedTripDays <= 0) {
-      return 0;
-    }
-
-    return actualSpendingUntilToday / elapsedTripDays;
-  }
-
-  double get projectedTotalSpending {
-    if (elapsedTripDays <= 0) {
-      return 0;
-    }
-
-    return averageDailySpending * trip.totalDays;
-  }
-
-  double get projectedRemainingBudget {
-    return trip.allowance - projectedTotalSpending;
-  }
-
-  String get dailyBudgetStatus {
-    if (todaysSpending == 0) {
-      return 'No spending today';
-    }
-
-    if (dailyBudgetDifference >= 0) {
-      return 'Within daily budget';
-    }
-
-    return 'Over daily budget';
   }
 
   Future<void> _addExpense() async {
@@ -191,15 +155,81 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  List<Expense> get todaysExpenses {
+    final today = DateTime.now();
+
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    return expenses.where((expense) {
+      final amount = expense.dailyAmounts[todayDate] ?? 0;
+
+      return amount > 0;
+    }).toList();
+  }
+
+  double get todaysSpending {
+    final today = DateTime.now();
+
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    return expenses.fold(
+      0,
+      (sum, expense) => sum + (expense.dailyAmounts[todayDate] ?? 0),
+    );
+  }
+
+  double get dailyBudgetDifference {
+    return recommendedDailyBudget - todaysSpending;
+  }
+
+  double get averageDailySpending {
+    if (totalSpent == 0) {
+      return 0;
+    }
+
+    final daysElapsed = trip.totalDays - remainingDays + 1;
+
+    if (daysElapsed <= 0) {
+      return 0;
+    }
+
+    return totalSpent / daysElapsed;
+  }
+
+  double get projectedTotalSpending {
+    return averageDailySpending * trip.totalDays;
+  }
+
+  double get projectedRemainingBudget {
+    return trip.allowance - projectedTotalSpending;
+  }
+
+  String get dailyBudgetStatus {
+    if (todaysSpending == 0) {
+      return 'No spending today';
+    }
+
+    if (dailyBudgetDifference >= 0) {
+      return 'Within daily budget';
+    }
+
+    return 'Over daily budget';
   }
 
   Future<void> _openExpenseHistory() async {
     final updatedExpenses = await Navigator.push<List<Expense>>(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            ExpenseHistoryPage(tripId: trip.id, expenses: expenses),
+        builder: (context) => ExpenseHistoryPage(
+          tripId: trip.id,
+          currencyCode: trip.currencyCode,
+          expenses: expenses,
+        ),
       ),
     );
 
@@ -212,10 +242,71 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     }
   }
 
+  Widget _buildCurrencySelector() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.currency_exchange),
+
+            const SizedBox(width: 12),
+
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Display Currency',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Convert displayed amounts',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+
+            if (_isConverting)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _displayCurrency,
+                  items: CurrencyService.supportedCurrencies
+                      .map(
+                        (currency) => DropdownMenuItem<String>(
+                          value: currency,
+                          child: Text(
+                            '$currency '
+                            '(${CurrencyService.getSymbol(currency)})',
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+
+                    _changeDisplayCurrency(value);
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool hasSpendingData = elapsedTripDays > 0;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.name),
@@ -232,15 +323,19 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           ),
         ],
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+
           children: [
             const SizedBox(height: 4),
 
             Text(
-              '${_formatDate(trip.startDate)} → ${_formatDate(trip.endDate)}',
+              '${_formatDate(trip.startDate)} → '
+              '${_formatDate(trip.endDate)}',
               style: const TextStyle(color: Colors.grey, fontSize: 14),
             ),
 
@@ -251,16 +346,19 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               style: const TextStyle(color: Colors.grey, fontSize: 14),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-            // ---------------------------------------------------------
-            // REMAINING BUDGET
-            // ---------------------------------------------------------
+            _buildCurrencySelector(),
+
+            const SizedBox(height: 12),
+
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
+
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
                     const Text(
                       'Remaining Budget',
@@ -270,7 +368,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const SizedBox(height: 8),
 
                     Text(
-                      '¥${remainingBudget.toStringAsFixed(0)}',
+                      _formatAmount(remainingBudget),
                       style: const TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
@@ -281,14 +379,13 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
             ),
 
-            // ---------------------------------------------------------
-            // RECOMMENDED DAILY BUDGET
-            // ---------------------------------------------------------
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
+
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
                     const Text(
                       'Recommended Daily Budget',
@@ -298,7 +395,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const SizedBox(height: 8),
 
                     Text(
-                      '¥${recommendedDailyBudget.toStringAsFixed(0)}',
+                      _formatAmount(recommendedDailyBudget),
                       style: const TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.bold,
@@ -308,7 +405,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const SizedBox(height: 4),
 
                     const Text(
-                      'Based on your remaining budget and trip days',
+                      'Based on your remaining budget '
+                      'and trip days',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
@@ -316,14 +414,13 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
             ),
 
-            // ---------------------------------------------------------
-            // SPENDING FORECAST
-            // ---------------------------------------------------------
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
+
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
                     const Text(
                       'Spending Forecast',
@@ -332,49 +429,31 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
                     const SizedBox(height: 8),
 
-                    if (!hasSpendingData)
-                      const Text(
-                        'No spending data yet',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    else ...[
-                      Text(
-                        '¥${projectedTotalSpending.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    Text(
+                      _formatAmount(projectedTotalSpending),
+                      style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
                       ),
+                    ),
 
-                      const SizedBox(height: 4),
+                    const SizedBox(height: 4),
 
-                      const Text(
-                        'Projected total spending',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
+                    const Text(
+                      'Projected total spending',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
 
-                      const SizedBox(height: 12),
+                    const SizedBox(height: 12),
 
-                      Text(
-                        projectedRemainingBudget >= 0
-                            ? 'Projected remaining: ¥${projectedRemainingBudget.toStringAsFixed(0)}'
-                            : 'Projected over budget: ¥${projectedRemainingBudget.abs().toStringAsFixed(0)}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-
-                      const SizedBox(height: 4),
-
-                      Text(
-                        'Average daily spending: ¥${averageDailySpending.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
+                    Text(
+                      projectedRemainingBudget >= 0
+                          ? 'Projected remaining: '
+                                '${_formatAmount(projectedRemainingBudget)}'
+                          : 'Projected over budget: '
+                                '${_formatAmount(projectedRemainingBudget.abs())}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ],
                 ),
               ),
@@ -387,7 +466,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 Expanded(
                   child: SummaryCard(
                     title: 'Allowance',
-                    value: '¥${trip.allowance.toStringAsFixed(0)}',
+                    value: _formatAmount(trip.allowance),
                   ),
                 ),
 
@@ -396,7 +475,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 Expanded(
                   child: SummaryCard(
                     title: 'Spent',
-                    value: '¥${totalSpent.toStringAsFixed(0)}',
+                    value: _formatAmount(totalSpent),
                   ),
                 ),
               ],
@@ -404,11 +483,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
             const SizedBox(height: 24),
 
-            // ---------------------------------------------------------
-            // TODAY'S SPENDING
-            // ---------------------------------------------------------
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
               children: [
                 const Text(
                   "Today's Spending",
@@ -425,7 +502,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             const SizedBox(height: 4),
 
             Text(
-              '¥${todaysSpending.toStringAsFixed(0)} spent today',
+              '${_formatAmount(todaysSpending)} '
+              'spent today',
               style: const TextStyle(color: Colors.grey),
             ),
 
@@ -438,8 +516,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
             Text(
               dailyBudgetDifference >= 0
-                  ? '¥${dailyBudgetDifference.toStringAsFixed(0)} remaining for today'
-                  : '¥${dailyBudgetDifference.abs().toStringAsFixed(0)} over today\'s budget',
+                  ? '${_formatAmount(dailyBudgetDifference)} remaining for today'
+                  : '${_formatAmount(dailyBudgetDifference.abs())} over today\'s budget',
               style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
 
@@ -452,14 +530,19 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
 
             ...todaysExpenses.map((expense) {
-              final amount = expense.dailyAmounts[today] ?? 0;
+              final today = DateTime.now();
+
+              final todayDate = DateTime(today.year, today.month, today.day);
+
+              final amount = expense.dailyAmounts[todayDate] ?? 0;
 
               return ExpenseItem(
                 category: expense.category,
                 description: expense.description,
                 amount: amount,
                 icon: expense.icon,
-                date: _formatDate(today),
+                date: _formatDate(todayDate),
+                currencyCode: trip.currencyCode,
               );
             }),
           ],
@@ -486,6 +569,7 @@ class AddExpenseDialog extends StatefulWidget {
 
 class _AddExpenseDialogState extends State<AddExpenseDialog> {
   late final TextEditingController _descriptionController;
+
   late final TextEditingController _amountController;
 
   String _selectedCategory = 'Food';
@@ -506,6 +590,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     super.initState();
 
     _descriptionController = TextEditingController();
+
     _amountController = TextEditingController();
 
     final today = DateTime.now();
@@ -542,7 +627,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 
   String _dateText() {
@@ -554,7 +641,8 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
       return 'Select date range';
     }
 
-    return '${_formatDate(_rangeStart!)} → ${_formatDate(_rangeEnd!)}';
+    return '${_formatDate(_rangeStart!)} → '
+        '${_formatDate(_rangeEnd!)}';
   }
 
   Future<void> _selectDate() async {
@@ -747,7 +835,8 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
               decoration: InputDecoration(
                 labelText: 'Amount',
-                prefixText: '¥ ',
+                prefixText:
+                    '${CurrencyService.getSymbol(widget.trip.currencyCode)} ',
                 errorText: _amountError,
               ),
             ),
@@ -790,7 +879,8 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
               title: const Text('Spread across days'),
 
               subtitle: const Text(
-                'Divide the expense equally across the selected dates',
+                'Divide the expense equally '
+                'across the selected dates',
               ),
 
               value: _spreadAcrossDays,
@@ -811,6 +901,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
                     _rangeEnd = _selectedDate;
                   } else {
                     _rangeStart = null;
+
                     _rangeEnd = null;
                   }
                 });

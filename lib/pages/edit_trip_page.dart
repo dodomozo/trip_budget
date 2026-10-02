@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/trip.dart';
 import '../services/trip_storage_service.dart';
+import '../services/currency_service.dart';
 
 class EditTripPage extends StatefulWidget {
   final Trip trip;
@@ -26,6 +27,7 @@ class _EditTripPageState extends State<EditTripPage> {
     super.initState();
 
     _nameController = TextEditingController(text: widget.trip.name);
+
     _allowanceController = TextEditingController(
       text: widget.trip.allowance.toStringAsFixed(0),
     );
@@ -38,6 +40,7 @@ class _EditTripPageState extends State<EditTripPage> {
   void dispose() {
     _nameController.dispose();
     _allowanceController.dispose();
+
     super.dispose();
   }
 
@@ -49,13 +52,19 @@ class _EditTripPageState extends State<EditTripPage> {
       initialDate: _startDate,
     );
 
-    if (selectedDate == null) return;
+    if (selectedDate == null || !mounted) {
+      return;
+    }
 
     setState(() {
-      _startDate = selectedDate;
+      _startDate = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+      );
 
-      if (_endDate.isBefore(selectedDate)) {
-        _endDate = selectedDate;
+      if (_endDate.isBefore(_startDate)) {
+        _endDate = _startDate;
       }
     });
   }
@@ -68,16 +77,25 @@ class _EditTripPageState extends State<EditTripPage> {
       initialDate: _endDate.isBefore(_startDate) ? _startDate : _endDate,
     );
 
-    if (selectedDate == null) return;
+    if (selectedDate == null || !mounted) {
+      return;
+    }
 
     setState(() {
-      _endDate = selectedDate;
+      _endDate = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+      );
     });
   }
 
   Future<void> _saveTrip() async {
     final name = _nameController.text.trim();
-    final allowance = double.tryParse(_allowanceController.text.trim());
+
+    final allowance = double.tryParse(
+      _allowanceController.text.trim().replaceAll(',', ''),
+    );
 
     if (name.isEmpty ||
         allowance == null ||
@@ -86,6 +104,7 @@ class _EditTripPageState extends State<EditTripPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please complete all fields correctly.')),
       );
+
       return;
     }
 
@@ -95,21 +114,31 @@ class _EditTripPageState extends State<EditTripPage> {
       allowance: allowance,
       startDate: _startDate,
       endDate: _endDate,
+
+      // IMPORTANT:
+      // Keep the currency that belongs to this trip.
+      currencyCode: widget.trip.currencyCode,
     );
 
     await _tripStorageService.saveTrip(updatedTrip);
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     Navigator.pop(context, true);
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 
   @override
   Widget build(BuildContext context) {
+    final currencySymbol = CurrencyService.getSymbol(widget.trip.currencyCode);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Trip')),
       body: ListView(
@@ -127,12 +156,19 @@ class _EditTripPageState extends State<EditTripPage> {
 
           TextField(
             controller: _allowanceController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
               labelText: 'Allowance',
-              prefixText: '¥ ',
-              border: OutlineInputBorder(),
+              prefixText: '$currencySymbol ',
+              border: const OutlineInputBorder(),
             ),
+          ),
+
+          const SizedBox(height: 8),
+
+          Text(
+            'Currency: ${widget.trip.currencyCode}',
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
           ),
 
           const SizedBox(height: 16),
@@ -145,6 +181,8 @@ class _EditTripPageState extends State<EditTripPage> {
               onTap: _selectStartDate,
             ),
           ),
+
+          const SizedBox(height: 8),
 
           Card(
             child: ListTile(

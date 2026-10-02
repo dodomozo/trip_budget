@@ -33,6 +33,9 @@ class TripStorageService {
       _key(trip.id, 'end_date'),
       trip.endDate.toIso8601String(),
     );
+
+    // Save the currency selected for this specific trip.
+    await prefs.setString(_key(trip.id, 'currency_code'), trip.currencyCode);
   }
 
   Future<List<Trip>> loadTrips() async {
@@ -51,6 +54,11 @@ class TripStorageService {
 
       final endDateString = prefs.getString(_key(tripId, 'end_date'));
 
+      // Existing trips created before currency persistence was added
+      // will default to JPY.
+      final currencyCode =
+          prefs.getString(_key(tripId, 'currency_code')) ?? 'JPY';
+
       if (name == null ||
           allowance == null ||
           startDateString == null ||
@@ -65,6 +73,7 @@ class TripStorageService {
           allowance: allowance,
           startDate: DateTime.parse(startDateString),
           endDate: DateTime.parse(endDateString),
+          currencyCode: currencyCode,
         ),
       );
     }
@@ -83,6 +92,11 @@ class TripStorageService {
 
     final endDateString = prefs.getString(_key(tripId, 'end_date'));
 
+    // Existing trips created before currency persistence was added
+    // will default to JPY.
+    final currencyCode =
+        prefs.getString(_key(tripId, 'currency_code')) ?? 'JPY';
+
     if (name == null ||
         allowance == null ||
         startDateString == null ||
@@ -96,6 +110,7 @@ class TripStorageService {
       allowance: allowance,
       startDate: DateTime.parse(startDateString),
       endDate: DateTime.parse(endDateString),
+      currencyCode: currencyCode,
     );
   }
 
@@ -112,6 +127,7 @@ class TripStorageService {
     await prefs.remove(_key(tripId, 'allowance'));
     await prefs.remove(_key(tripId, 'start_date'));
     await prefs.remove(_key(tripId, 'end_date'));
+    await prefs.remove(_key(tripId, 'currency_code'));
   }
 
   Future<void> migrateDefaultTrip() async {
@@ -141,6 +157,7 @@ class TripStorageService {
       allowance: allowance,
       startDate: DateTime.parse(startDateString),
       endDate: DateTime.parse(endDateString),
+      currencyCode: 'JPY',
     );
 
     await saveTrip(trip);
