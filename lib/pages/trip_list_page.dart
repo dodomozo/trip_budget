@@ -7,6 +7,7 @@ import 'add_trip_page.dart';
 import 'edit_trip_page.dart';
 import '../services/expense_storage_service.dart';
 import '../services/active_trip_service.dart';
+import '../services/currency_service.dart';
 
 class TripListPage extends StatefulWidget {
   const TripListPage({super.key});
@@ -123,7 +124,7 @@ class _TripListPageState extends State<TripListPage> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         '${_formatDate(trip.startDate)} → ${_formatDate(trip.endDate)}\n'
-                        'Allowance: ¥${trip.allowance.toStringAsFixed(0)}',
+                        'Allowance: ${CurrencyService.format(trip.allowance, trip.currencyCode)}',
                       ),
                     ),
                     trailing: Row(

@@ -20,11 +20,55 @@ class _AddTripPageState extends State<AddTripPage> {
   DateTime? _startDate;
   DateTime? _endDate;
 
+  String _selectedCurrency = 'JPY';
+
+  // Currency code -> currency name
+  static const Map<String, String> _currencies = {
+    'JPY': 'Japanese Yen',
+    'USD': 'US Dollar',
+    'PHP': 'Philippine Peso',
+    'EUR': 'Euro',
+    'GBP': 'British Pound',
+    'KRW': 'South Korean Won',
+    'CNY': 'Chinese Yuan',
+    'SGD': 'Singapore Dollar',
+    'AUD': 'Australian Dollar',
+    'CAD': 'Canadian Dollar',
+    'HKD': 'Hong Kong Dollar',
+    'TWD': 'New Taiwan Dollar',
+    'THB': 'Thai Baht',
+    'MYR': 'Malaysian Ringgit',
+    'IDR': 'Indonesian Rupiah',
+  };
+
+  // Currency code -> display symbol
+  static const Map<String, String> _currencySymbols = {
+    'JPY': '¥',
+    'USD': '\$',
+    'PHP': '₱',
+    'EUR': '€',
+    'GBP': '£',
+    'KRW': '₩',
+    'CNY': '¥',
+    'SGD': 'S\$',
+    'AUD': 'A\$',
+    'CAD': 'C\$',
+    'HKD': 'HK\$',
+    'TWD': 'NT\$',
+    'THB': '฿',
+    'MYR': 'RM',
+    'IDR': 'Rp',
+  };
+
   @override
   void dispose() {
     _nameController.dispose();
     _allowanceController.dispose();
     super.dispose();
+  }
+
+  String _currencySymbol(String currencyCode) {
+    return _currencySymbols[currencyCode] ?? currencyCode;
   }
 
   Future<void> _selectStartDate() async {
@@ -35,12 +79,18 @@ class _AddTripPageState extends State<AddTripPage> {
       initialDate: _startDate ?? DateTime.now(),
     );
 
-    if (selectedDate == null) return;
+    if (selectedDate == null || !mounted) {
+      return;
+    }
 
     setState(() {
-      _startDate = selectedDate;
+      _startDate = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+      );
 
-      if (_endDate != null && _endDate!.isBefore(selectedDate)) {
+      if (_endDate != null && _endDate!.isBefore(_startDate!)) {
         _endDate = null;
       }
     });
@@ -54,24 +104,42 @@ class _AddTripPageState extends State<AddTripPage> {
       initialDate: _endDate ?? _startDate ?? DateTime.now(),
     );
 
-    if (selectedDate == null) return;
+    if (selectedDate == null || !mounted) {
+      return;
+    }
 
     setState(() {
-      _endDate = selectedDate;
+      _endDate = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+      );
     });
   }
 
   Future<void> _saveTrip() async {
     final name = _nameController.text.trim();
-    final allowance = double.tryParse(_allowanceController.text.trim());
+    final allowance = double.tryParse(
+      _allowanceController.text.trim().replaceAll(',', ''),
+    );
 
-    if (name.isEmpty ||
-        allowance == null ||
-        allowance <= 0 ||
-        _startDate == null ||
-        _endDate == null) {
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please complete all fields.')),
+        const SnackBar(content: Text('Please enter a trip name.')),
+      );
+      return;
+    }
+
+    if (allowance == null || allowance <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid allowance.')),
+      );
+      return;
+    }
+
+    if (_startDate == null || _endDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select the start and end dates.')),
       );
       return;
     }
@@ -82,11 +150,14 @@ class _AddTripPageState extends State<AddTripPage> {
       allowance: allowance,
       startDate: _startDate!,
       endDate: _endDate!,
+      currencyCode: _selectedCurrency,
     );
 
     await _tripStorageService.saveTrip(trip);
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     Navigator.pop(context, true);
   }
@@ -101,6 +172,8 @@ class _AddTripPageState extends State<AddTripPage> {
 
   @override
   Widget build(BuildContext context) {
+    final currencySymbol = _currencySymbol(_selectedCurrency);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Add Trip')),
       body: ListView(
@@ -108,21 +181,55 @@ class _AddTripPageState extends State<AddTripPage> {
         children: [
           TextField(
             controller: _nameController,
+            textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
               labelText: 'Trip Name',
+              hintText: 'e.g. Japan Business Trip',
               border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.work_outline),
             ),
+          ),
+
+          const SizedBox(height: 16),
+
+          DropdownButtonFormField<String>(
+            initialValue: _selectedCurrency,
+            decoration: const InputDecoration(
+              labelText: 'Currency',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.currency_exchange),
+            ),
+            items: _currencies.entries.map((entry) {
+              final code = entry.key;
+              final name = entry.value;
+              final symbol = _currencySymbol(code);
+
+              return DropdownMenuItem<String>(
+                value: code,
+                child: Text('$code - $name ($symbol)'),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value == null) {
+                return;
+              }
+
+              setState(() {
+                _selectedCurrency = value;
+              });
+            },
           ),
 
           const SizedBox(height: 16),
 
           TextField(
             controller: _allowanceController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
               labelText: 'Allowance',
-              prefixText: '¥ ',
-              border: OutlineInputBorder(),
+              hintText: 'Enter your budget',
+              prefixText: '$currencySymbol ',
+              border: const OutlineInputBorder(),
             ),
           ),
 
@@ -133,15 +240,19 @@ class _AddTripPageState extends State<AddTripPage> {
               leading: const Icon(Icons.calendar_today),
               title: const Text('Start Date'),
               subtitle: Text(_formatDate(_startDate)),
+              trailing: const Icon(Icons.chevron_right),
               onTap: _selectStartDate,
             ),
           ),
+
+          const SizedBox(height: 8),
 
           Card(
             child: ListTile(
               leading: const Icon(Icons.event),
               title: const Text('End Date'),
               subtitle: Text(_formatDate(_endDate)),
+              trailing: const Icon(Icons.chevron_right),
               onTap: _selectEndDate,
             ),
           ),

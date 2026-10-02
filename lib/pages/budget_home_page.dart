@@ -121,6 +121,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     return recommendedDailyBudget - todaysSpending;
   }
 
+  /// Total amount actually spent from the beginning of the trip
+  /// through today, using the daily portions of each expense.
   double get actualSpendingUntilToday {
     return expenses.fold(0, (sum, expense) {
       double expenseTotal = 0;
@@ -212,6 +214,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasSpendingData = elapsedTripDays > 0;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.name),
@@ -249,6 +253,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
             const SizedBox(height: 24),
 
+            // ---------------------------------------------------------
+            // REMAINING BUDGET
+            // ---------------------------------------------------------
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -274,6 +281,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
             ),
 
+            // ---------------------------------------------------------
+            // RECOMMENDED DAILY BUDGET
+            // ---------------------------------------------------------
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -306,6 +316,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               ),
             ),
 
+            // ---------------------------------------------------------
+            // SPENDING FORECAST
+            // ---------------------------------------------------------
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -319,29 +332,49 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
                     const SizedBox(height: 8),
 
-                    Text(
-                      '¥${projectedTotalSpending.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
+                    if (!hasSpendingData)
+                      const Text(
+                        'No spending data yet',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    else ...[
+                      Text(
+                        '¥${projectedTotalSpending.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 4),
+                      const SizedBox(height: 4),
 
-                    const Text(
-                      'Projected total spending',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
+                      const Text(
+                        'Projected total spending',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    Text(
-                      projectedRemainingBudget >= 0
-                          ? 'Projected remaining: ¥${projectedRemainingBudget.toStringAsFixed(0)}'
-                          : 'Projected over budget: ¥${projectedRemainingBudget.abs().toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
+                      Text(
+                        projectedRemainingBudget >= 0
+                            ? 'Projected remaining: ¥${projectedRemainingBudget.toStringAsFixed(0)}'
+                            : 'Projected over budget: ¥${projectedRemainingBudget.abs().toStringAsFixed(0)}',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      Text(
+                        'Average daily spending: ¥${averageDailySpending.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -371,6 +404,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
             const SizedBox(height: 24),
 
+            // ---------------------------------------------------------
+            // TODAY'S SPENDING
+            // ---------------------------------------------------------
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -632,7 +668,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     if (descriptionError != null || amountError != null || dateError != null) {
       setState(() {
         _descriptionError = descriptionError;
+
         _amountError = amountError;
+
         _dateError = dateError;
       });
 
@@ -769,6 +807,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
                   if (value) {
                     _rangeStart = _selectedDate;
+
                     _rangeEnd = _selectedDate;
                   } else {
                     _rangeStart = null;

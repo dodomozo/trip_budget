@@ -4,6 +4,7 @@ class Trip {
   final double allowance;
   final DateTime startDate;
   final DateTime endDate;
+  final String currencyCode;
 
   const Trip({
     required this.id,
@@ -11,6 +12,7 @@ class Trip {
     required this.allowance,
     required this.startDate,
     required this.endDate,
+    this.currencyCode = 'JPY',
   });
 
   int get totalDays {
