@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/trip.dart';
 import '../services/trip_storage_service.dart';
 import '../services/currency_service.dart';
+import '../services/expense_storage_service.dart';
 
 class EditTripPage extends StatefulWidget {
   final Trip trip;
@@ -18,13 +19,22 @@ class _EditTripPageState extends State<EditTripPage> {
   late final TextEditingController _allowanceController;
 
   final TripStorageService _tripStorageService = TripStorageService();
+  final ExpenseStorageService _expenseStorageService = ExpenseStorageService();
 
   late DateTime _startDate;
   late DateTime _endDate;
 
   late String _selectedCurrency;
+  late final String _originalCurrency;
 
   bool _isConverting = false;
+
+  // This stores the exchange rate from the ORIGINAL
+  // trip currency to the currently selected currency.
+  //
+  // Expenses are NOT converted immediately.
+  // They are converted only when "Save Changes" is pressed.
+  double? _pendingExpenseExchangeRate;
 
   static const Map<String, String> _currencies = {
     'JPY': 'Japanese Yen',
@@ -58,6 +68,7 @@ class _EditTripPageState extends State<EditTripPage> {
     _endDate = widget.trip.endDate;
 
     _selectedCurrency = widget.trip.currencyCode;
+    _originalCurrency = widget.trip.currencyCode;
   }
 
   @override
@@ -99,12 +110,24 @@ class _EditTripPageState extends State<EditTripPage> {
     });
 
     try {
-      final rate = await CurrencyService.getExchangeRate(
+      // Rate used to convert the allowance currently shown
+      // in the form from the current selected currency
+      // to the new selected currency.
+      final allowanceRate = await CurrencyService.getExchangeRate(
         oldCurrency,
         newCurrency,
       );
 
-      final convertedAllowance = currentAllowance * rate;
+      // Rate used for stored expenses.
+      //
+      // Expenses are still stored in the ORIGINAL trip currency
+      // until the user presses "Save Changes".
+      final expenseRate = await CurrencyService.getExchangeRate(
+        _originalCurrency,
+        newCurrency,
+      );
+
+      final convertedAllowance = currentAllowance * allowanceRate;
 
       if (!mounted) {
         return;
@@ -118,6 +141,14 @@ class _EditTripPageState extends State<EditTripPage> {
         _allowanceController.selection = TextSelection.fromPosition(
           TextPosition(offset: _allowanceController.text.length),
         );
+
+        // If the user returns to the original currency,
+        // no expense conversion is necessary.
+        if (newCurrency == _originalCurrency) {
+          _pendingExpenseExchangeRate = null;
+        } else {
+          _pendingExpenseExchangeRate = expenseRate;
+        }
 
         _isConverting = false;
       });
@@ -210,6 +241,32 @@ class _EditTripPageState extends State<EditTripPage> {
         const SnackBar(content: Text('End date cannot be before start date.')),
       );
       return;
+    }
+
+    // Convert existing expenses ONLY when the user
+    // actually changed the trip currency.
+    //
+    // The conversion is intentionally done here rather than
+    // inside _changeCurrency(), so cancelling the edit does
+    // not modify the stored expenses.
+    if (_selectedCurrency != _originalCurrency &&
+        _pendingExpenseExchangeRate != null) {
+      try {
+        await _expenseStorageService.convertExpensesCurrency(
+          tripId: widget.trip.id,
+          exchangeRate: _pendingExpenseExchangeRate!,
+        );
+      } catch (e) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to convert existing expenses.')),
+        );
+
+        return;
+      }
     }
 
     final updatedTrip = Trip(
@@ -308,7 +365,7 @@ class _EditTripPageState extends State<EditTripPage> {
                 ),
                 SizedBox(width: 8),
                 Text(
-                  'Converting allowance...',
+                  'Converting currency...',
                   style: TextStyle(color: Colors.grey, fontSize: 13),
                 ),
               ],
