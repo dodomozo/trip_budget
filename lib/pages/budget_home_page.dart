@@ -8,6 +8,7 @@ import '../widgets/expense_item.dart';
 import '../widgets/summary_card.dart';
 import '../services/expense_storage_service.dart';
 import '../services/currency_service.dart';
+import '../services/theme_mode_service.dart';
 import '../constants/expense_categories.dart';
 
 class BudgetHomePage extends StatefulWidget {
@@ -38,6 +39,79 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     _displayCurrency = trip.currencyCode;
 
     _loadExpenses();
+  }
+
+  Future<void> _showAppearancePicker() async {
+    final selectedMode = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final currentMode = ThemeModeService.mode.value;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Appearance',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Choose how Budget Monitoring looks.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                ),
+
+                ...ThemeMode.values.map((themeMode) {
+                  final isSelected = themeMode == currentMode;
+
+                  return ListTile(
+                    leading: Icon(ThemeModeService.getModeIcon(themeMode)),
+                    title: Text(ThemeModeService.getModeName(themeMode)),
+                    trailing: isSelected
+                        ? Icon(
+                            Icons.check_circle,
+                            color: Theme.of(context).colorScheme.primary,
+                          )
+                        : null,
+                    selected: isSelected,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context, themeMode);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedMode == null || !mounted) {
+      return;
+    }
+
+    await ThemeModeService.setMode(selectedMode);
   }
 
   Future<void> _loadExpenses() async {
@@ -166,17 +240,21 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         '${date.day.toString().padLeft(2, '0')}';
   }
 
- List<Expense> get todaysExpenses {
-  final today = DateTime.now();
+  List<Expense> get todaysExpenses {
+    final today = DateTime.now();
 
-  return expenses.where((expense) {
-    return expense.dailyAmounts.keys.any((date) {
-      return date.year == today.year &&
-          date.month == today.month &&
-          date.day == today.day;
-    });
-  }).toList().reversed.toList();
-}
+    return expenses
+        .where((expense) {
+          return expense.dailyAmounts.keys.any((date) {
+            return date.year == today.year &&
+                date.month == today.month &&
+                date.day == today.day;
+          });
+        })
+        .toList()
+        .reversed
+        .toList();
+  }
 
   double get todaysSpending {
     final today = DateTime.now();
@@ -627,13 +705,23 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         const SizedBox(height: 12),
         Card(
           elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+            decoration: BoxDecoration(
+              color: isWithinBudget
+                  ? Theme.of(context).colorScheme.primaryContainer
+                        .withValues(alpha: 0.45)
+                  : Theme.of(context).colorScheme.errorContainer
+                        .withValues(alpha: 0.55),
+            ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 50,
+                  height: 50,
                   decoration: BoxDecoration(
                     color: isWithinBudget
                         ? Theme.of(context).colorScheme.primaryContainer
@@ -644,21 +732,29 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     isWithinBudget
                         ? Icons.check_rounded
                         : Icons.warning_amber_rounded,
+                    size: 27,
                     color: isWithinBudget
                         ? Theme.of(context).colorScheme.onPrimaryContainer
                         : Theme.of(context).colorScheme.onErrorContainer,
                   ),
                 ),
-                const SizedBox(width: 14),
+
+                const SizedBox(width: 16),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         dailyBudgetStatus,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      const SizedBox(height: 3),
+
+                      const SizedBox(height: 5),
+
                       Text(
                         dailyBudgetDifference >= 0
                             ? '${_formatAmount(dailyBudgetDifference)} '
@@ -666,8 +762,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                             : '${_formatAmount(dailyBudgetDifference.abs())} '
                                   'over today\'s budget',
                         style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 13,
                         ),
                       ),
                     ],
@@ -757,6 +853,11 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       appBar: AppBar(
         title: const Text('Budget Monitoring'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.brightness_6_outlined),
+            tooltip: 'Appearance',
+            onPressed: _showAppearancePicker,
+          ),
           IconButton(
             icon: const Icon(Icons.folder_copy_outlined),
             tooltip: 'My Trips',
