@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/expense.dart';
+import '../constants/expense_categories.dart';
 
 class ExpenseStorageService {
   String _key(String tripId, String type) {
@@ -169,18 +170,6 @@ class ExpenseStorageService {
   }
 
   static IconData getIcon(String category) {
-    switch (category) {
-      case 'Food':
-        return Icons.restaurant;
-
-      case 'Transportation':
-        return Icons.train;
-
-      case 'Shopping':
-        return Icons.shopping_bag;
-
-      default:
-        return Icons.receipt;
-    }
+    return ExpenseCategories.getIcon(category);
   }
 }

@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../models/expense.dart';
-import '../services/expense_storage_service.dart';
 import '../services/currency_service.dart';
+import '../services/expense_storage_service.dart';
 import '../widgets/expense_item.dart';
+import '../constants/expense_categories.dart';
 
 class _ExpenseDayEntry {
   final Expense expense;
   final DateTime date;
   final double amount;
+  final int expenseIndex;
 
   const _ExpenseDayEntry({
     required this.expense,
     required this.date,
     required this.amount,
+    required this.expenseIndex,
   });
 }
 
@@ -46,14 +49,33 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     expenses = [...widget.expenses];
   }
 
+  DateTime _dateOnly(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
   String _formatDate(DateTime date) {
     return '${date.year}-'
         '${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}';
   }
 
-  DateTime _dateOnly(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
+  String _formatDateHeader(DateTime date) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
   double _convertAmount(double amount) {
@@ -70,7 +92,9 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
   List<_ExpenseDayEntry> _buildDailyEntries() {
     final entries = <_ExpenseDayEntry>[];
 
-    for (final expense in expenses) {
+    for (var expenseIndex = 0; expenseIndex < expenses.length; expenseIndex++) {
+      final expense = expenses[expenseIndex];
+
       for (final entry in expense.dailyAmounts.entries) {
         final amount = entry.value;
 
@@ -83,11 +107,16 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
             expense: expense,
             date: _dateOnly(entry.key),
             amount: amount,
+            expenseIndex: expenseIndex,
           ),
         );
       }
     }
 
+    // Newest date first.
+    //
+    // For expenses on the same date, higher expenseIndex means
+    // the expense was added later, so it appears first.
     entries.sort((a, b) {
       final dateComparison = b.date.compareTo(a.date);
 
@@ -95,10 +124,22 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
         return dateComparison;
       }
 
-      return a.expense.description.compareTo(b.expense.description);
+      return b.expenseIndex.compareTo(a.expenseIndex);
     });
 
     return entries;
+  }
+
+  Map<DateTime, List<_ExpenseDayEntry>> _groupEntriesByDate(
+    List<_ExpenseDayEntry> entries,
+  ) {
+    final grouped = <DateTime, List<_ExpenseDayEntry>>{};
+
+    for (final entry in entries) {
+      grouped.putIfAbsent(entry.date, () => []).add(entry);
+    }
+
+    return grouped;
   }
 
   Future<void> _saveExpenses() async {
@@ -222,7 +263,7 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
       category: updatedPortion.category,
       description: updatedPortion.description,
       dailyAmounts: updatedDailyAmounts,
-      icon: ExpenseStorageService.getIcon(updatedPortion.category),
+      icon: ExpenseCategories.getIcon(updatedPortion.category),
     );
 
     setState(() {
@@ -240,9 +281,87 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
     );
   }
 
+  Widget _buildDateHeader(DateTime date, List<_ExpenseDayEntry> entries) {
+    final dailyTotal = entries.fold<double>(
+      0,
+      (total, entry) => total + entry.amount,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10, top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Text(
+              _formatDateHeader(date),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Text(
+            CurrencyService.format(
+              _convertAmount(dailyTotal),
+              widget.displayCurrencyCode,
+            ),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpenseEntry(_ExpenseDayEntry entry) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Dismissible(
+        key: ValueKey(
+          '${entry.expense.hashCode}_'
+          '${entry.date.toIso8601String()}',
+        ),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: Colors.red,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.delete, color: Colors.white),
+        ),
+        confirmDismiss: (_) async {
+          return await _confirmDelete(entry);
+        },
+        onDismissed: (_) {
+          _deleteExpensePortion(entry);
+        },
+        child: GestureDetector(
+          onTap: () {
+            _editExpensePortion(entry);
+          },
+          child: ExpenseItem(
+            category: entry.expense.category,
+            description: entry.expense.description,
+            amount: _convertAmount(entry.amount),
+            icon: entry.expense.icon,
+            date: _formatDate(entry.date),
+            currencyCode: widget.displayCurrencyCode,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dailyEntries = _buildDailyEntries();
+    final groupedEntries = _groupEntriesByDate(dailyEntries);
+
+    final dates = groupedEntries.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return Scaffold(
       appBar: AppBar(
@@ -262,47 +381,21 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: dailyEntries.length,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              itemCount: dates.length,
               itemBuilder: (context, index) {
-                final entry = dailyEntries[index];
+                final date = dates[index];
+                final entries = groupedEntries[date]!;
 
-                return Dismissible(
-                  key: ValueKey(
-                    '${entry.expense.tripId}_'
-                    '${entry.expense.description}_'
-                    '${entry.date.toIso8601String()}',
-                  ),
-                  direction: DismissDirection.endToStart,
-                  background: Container(
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20),
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.delete, color: Colors.white),
-                  ),
-                  confirmDismiss: (_) async {
-                    return await _confirmDelete(entry);
-                  },
-                  onDismissed: (_) {
-                    _deleteExpensePortion(entry);
-                  },
-                  child: GestureDetector(
-                    onTap: () {
-                      _editExpensePortion(entry);
-                    },
-                    child: ExpenseItem(
-                      category: entry.expense.category,
-                      description: entry.expense.description,
-                      amount: _convertAmount(entry.amount),
-                      icon: entry.expense.icon,
-                      date: _formatDate(entry.date),
-                      currencyCode: widget.displayCurrencyCode,
-                    ),
-                  ),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildDateHeader(date, entries),
+
+                    ...entries.map(_buildExpenseEntry),
+
+                    if (index < dates.length - 1) const SizedBox(height: 12),
+                  ],
                 );
               },
             ),
@@ -415,9 +508,7 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
 
   void _save() {
     final description = _descriptionController.text.trim();
-
     final amountText = _amountController.text.trim();
-
     final amount = double.tryParse(amountText);
 
     String? descriptionError;
@@ -478,15 +569,29 @@ class _EditExpensePortionDialogState extends State<EditExpensePortionDialog> {
             DropdownButtonFormField<String>(
               initialValue: _selectedCategory,
               decoration: const InputDecoration(labelText: 'Category'),
-              items: const [
-                DropdownMenuItem(value: 'Food', child: Text('Food')),
-                DropdownMenuItem(
-                  value: 'Transportation',
-                  child: Text('Transportation'),
-                ),
-                DropdownMenuItem(value: 'Shopping', child: Text('Shopping')),
-                DropdownMenuItem(value: 'Other', child: Text('Other')),
-              ],
+              items: ExpenseCategories.all.map((category) {
+                return DropdownMenuItem<String>(
+                  value: category.name,
+                  child: Row(
+                    children: [
+                      Icon(category.icon, size: 22),
+                      const SizedBox(width: 12),
+                      Text(category.name),
+                    ],
+                  ),
+                );
+              }).toList(),
+              selectedItemBuilder: (context) {
+                return ExpenseCategories.all.map((category) {
+                  return Row(
+                    children: [
+                      Icon(category.icon, size: 22),
+                      const SizedBox(width: 12),
+                      Text(category.name),
+                    ],
+                  );
+                }).toList();
+              },
               onChanged: (value) {
                 if (value == null) {
                   return;
