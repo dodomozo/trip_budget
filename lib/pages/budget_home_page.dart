@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'expense_history_page.dart';
+import 'statistics_page.dart';
 import 'trip_list_page.dart';
 import '../models/expense.dart';
 import '../models/trip.dart';
@@ -196,15 +197,30 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
     final todayDate = DateTime(today.year, today.month, today.day);
 
+    final startDate = DateTime(
+      trip.startDate.year,
+      trip.startDate.month,
+      trip.startDate.day,
+    );
+
     final endDate = DateTime(
       trip.endDate.year,
       trip.endDate.month,
       trip.endDate.day,
     );
 
-    final days = endDate.difference(todayDate).inDays;
+    // Trip has not started yet.
+    if (todayDate.isBefore(startDate)) {
+      return trip.totalDays;
+    }
 
-    return days < 0 ? 0 : days + 1;
+    // Trip has already ended.
+    if (todayDate.isAfter(endDate)) {
+      return 0;
+    }
+
+    // Today is NOT counted as a remaining day.
+    return endDate.difference(todayDate).inDays;
   }
 
   double get recommendedDailyBudget {
@@ -276,7 +292,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       return 0;
     }
 
-    final daysElapsed = trip.totalDays - remainingDays + 1;
+    final daysElapsed = trip.totalDays - remainingDays;
 
     if (daysElapsed <= 0) {
       return 0;
@@ -330,6 +346,22 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         expenses = updatedExpenses;
       });
     }
+  }
+
+  Future<void> _openStatistics() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return StatisticsPage(
+            trip: trip,
+            expenses: expenses,
+            displayCurrencyCode: _displayCurrency,
+            exchangeRate: _exchangeRate,
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _showCurrencyPicker() async {
@@ -853,6 +885,11 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       appBar: AppBar(
         title: const Text('Budget Monitoring'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart_rounded),
+            tooltip: 'Statistics',
+            onPressed: _openStatistics,
+          ),
           IconButton(
             icon: const Icon(Icons.brightness_6_outlined),
             tooltip: 'Appearance',
