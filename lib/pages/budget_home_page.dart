@@ -192,35 +192,46 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     return trip.allowance - totalSpent;
   }
 
-  int get remainingDays {
-    final today = DateTime.now();
+  DateTime get _todayDate {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
 
-    final todayDate = DateTime(today.year, today.month, today.day);
-
-    final startDate = DateTime(
+  DateTime get _tripStartDate {
+    return DateTime(
       trip.startDate.year,
       trip.startDate.month,
       trip.startDate.day,
     );
+  }
 
-    final endDate = DateTime(
-      trip.endDate.year,
-      trip.endDate.month,
-      trip.endDate.day,
-    );
+  DateTime get _tripEndDate {
+    return DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day);
+  }
 
-    // Trip has not started yet.
-    if (todayDate.isBefore(startDate)) {
-      return trip.totalDays;
-    }
-
-    // Trip has already ended.
-    if (todayDate.isAfter(endDate)) {
+  int get elapsedDays {
+    if (_todayDate.isBefore(_tripStartDate)) {
       return 0;
     }
 
-    // Today is NOT counted as a remaining day.
-    return endDate.difference(todayDate).inDays;
+    if (_todayDate.isAfter(_tripEndDate)) {
+      return trip.totalDays;
+    }
+
+    return _todayDate.difference(_tripStartDate).inDays + 1;
+  }
+
+  int get remainingDays {
+    if (_todayDate.isBefore(_tripStartDate)) {
+      return trip.totalDays;
+    }
+
+    if (_todayDate.isAfter(_tripEndDate)) {
+      return 0;
+    }
+
+    // Today is included because it is still available for spending.
+    return _tripEndDate.difference(_todayDate).inDays + 1;
   }
 
   double get recommendedDailyBudget {
@@ -288,20 +299,24 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   double get averageDailySpending {
-    if (totalSpent == 0) {
+    if (totalSpent == 0 || elapsedDays <= 0) {
       return 0;
     }
 
-    final daysElapsed = trip.totalDays - remainingDays;
-
-    if (daysElapsed <= 0) {
-      return 0;
-    }
-
-    return totalSpent / daysElapsed;
+    return totalSpent / elapsedDays;
   }
 
   double get projectedTotalSpending {
+    if (elapsedDays <= 0) {
+      return 0;
+    }
+
+    // Once the trip has ended, use the actual total instead of
+    // extrapolating from an extra day.
+    if (elapsedDays >= trip.totalDays) {
+      return totalSpent;
+    }
+
     return averageDailySpending * trip.totalDays;
   }
 

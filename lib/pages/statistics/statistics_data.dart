@@ -62,7 +62,7 @@ class StatisticsData {
       return 0;
     }
 
-    return endDate.difference(today).inDays;
+    return endDate.difference(today).inDays + 1;
   }
 
   // ------------------------------------------------------------
