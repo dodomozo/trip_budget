@@ -15,6 +15,7 @@ class StatisticsPage extends StatefulWidget {
   final List<Expense> expenses;
   final String displayCurrencyCode;
   final double exchangeRate;
+  final int initialTabIndex;
 
   const StatisticsPage({
     super.key,
@@ -22,6 +23,7 @@ class StatisticsPage extends StatefulWidget {
     required this.expenses,
     required this.displayCurrencyCode,
     required this.exchangeRate,
+    this.initialTabIndex = 0,
   });
 
   @override
@@ -31,14 +33,17 @@ class StatisticsPage extends StatefulWidget {
 class _StatisticsPageState extends State<StatisticsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-
   late StatisticsData _data;
 
   @override
   void initState() {
     super.initState();
 
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(
+      length: 6,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 5),
+    );
 
     _data = StatisticsData(
       trip: widget.trip,

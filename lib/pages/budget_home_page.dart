@@ -364,6 +364,23 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     );
   }
 
+  Future<void> _openPlanner() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return StatisticsPage(
+            trip: trip,
+            expenses: expenses,
+            displayCurrencyCode: _displayCurrency,
+            exchangeRate: _exchangeRate,
+            initialTabIndex: 5,
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showCurrencyPicker() async {
     if (_isConverting) {
       return;
@@ -879,6 +896,59 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     );
   }
 
+  Widget _buildPlannerShortcutCard() {
+    return Card(
+      elevation: 0,
+      child: InkWell(
+        onTap: _openPlanner,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.savings_rounded,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Plan My Budget',
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Set a savings goal and daily spending limit.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -921,6 +991,10 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               const SizedBox(height: 18),
 
               _buildRemainingBudgetCard(),
+
+              const SizedBox(height: 12),
+
+              _buildPlannerShortcutCard(),
 
               const SizedBox(height: 12),
 
