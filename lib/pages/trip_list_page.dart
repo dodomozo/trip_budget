@@ -97,10 +97,64 @@ class _TripListPageState extends State<TripListPage> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : trips.isEmpty
-          ? const Center(
-              child: Text(
-                'No trips yet.',
-                style: TextStyle(color: Colors.grey),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 96,
+                      height: 96,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.flight_takeoff_rounded,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'No trip yet',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Start planning your next trip\n'
+                      'by creating your first budget.',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 28),
+                    FilledButton.icon(
+                      onPressed: () async {
+                        final added = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AddTripPage(),
+                          ),
+                        );
+
+                        if (added == true) {
+                          await _loadTrips();
+                        }
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create a Trip'),
+                    ),
+                  ],
+                ),
               ),
             )
           : ListView.builder(
@@ -171,20 +225,22 @@ class _TripListPageState extends State<TripListPage> {
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final added = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (context) => const AddTripPage()),
-          );
+      floatingActionButton: trips.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () async {
+                final added = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AddTripPage()),
+                );
 
-          if (added == true) {
-            await _loadTrips();
-          }
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add Trip'),
-      ),
+                if (added == true) {
+                  await _loadTrips();
+                }
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Trip'),
+            ),
     );
   }
 }
