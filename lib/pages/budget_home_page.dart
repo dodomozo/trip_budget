@@ -75,7 +75,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Choose how Budget Monitoring looks.',
+                      'Choose how Trip Budget looks.',
                       style: TextStyle(color: Colors.grey),
                     ),
                   ),
@@ -515,14 +515,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                trip.name,
-                style: const TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 6),
               Row(
                 children: [
                   Icon(
@@ -969,37 +961,65 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Budget Monitoring'),
+        title: Text(trip.name),
         actions: [
           IconButton(
             icon: const Icon(Icons.bar_chart_rounded),
             tooltip: 'Statistics',
             onPressed: _openStatistics,
           ),
-          IconButton(
-            icon: const Icon(Icons.brightness_6_outlined),
-            tooltip: 'Appearance',
-            onPressed: _showAppearancePicker,
-          ),
-          IconButton(
-            icon: const Icon(Icons.folder_copy_outlined),
-            tooltip: 'My Trips',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const TripListPage()),
-              );
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            offset: const Offset(0, 48),
+            onSelected: (value) {
+              switch (value) {
+                case 'my_trips':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TripListPage(),
+                    ),
+                  );
+                  break;
+
+                case 'appearance':
+                  _showAppearancePicker();
+                  break;
+
+                case 'about':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AboutPage()),
+                  );
+                  break;
+              }
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            tooltip: 'About Trip Budget',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AboutPage()),
-              );
-            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'my_trips',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.folder_copy_outlined),
+                  title: Text('My Trips'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'appearance',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.brightness_6_outlined),
+                  title: Text('Appearance'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'about',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.info_outline),
+                  title: Text('About Trip Budget'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 4),
         ],
