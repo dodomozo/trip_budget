@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'expense_history_page.dart';
 import 'statistics_page.dart';
 import 'trip_list_page.dart';
+import 'about_page.dart';
 import '../models/expense.dart';
 import '../models/trip.dart';
 import '../widgets/expense_item.dart';
@@ -987,6 +988,16 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const TripListPage()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About Trip Budget',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AboutPage()),
               );
             },
           ),
