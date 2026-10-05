@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/expense.dart';
+import '../constants/expense_categories.dart';
 
 class ExpenseStorageService {
   String _key(String tripId, String type) {
@@ -40,7 +41,8 @@ class ExpenseStorageService {
 
       Map<DateTime, double> dailyAmounts;
 
-      // New format: JSON containing one or more date/amount pairs.
+      // New format:
+      // JSON containing one or more date/amount pairs.
       try {
         final decoded = jsonDecode(rawAmount);
 
@@ -57,7 +59,8 @@ class ExpenseStorageService {
           throw const FormatException();
         }
       } catch (_) {
-        // Old format: a single numeric amount + single date.
+        // Old format:
+        // a single numeric amount + single date.
         final amount = double.tryParse(rawAmount);
 
         if (amount == null) {
@@ -121,25 +124,52 @@ class ExpenseStorageService {
     );
   }
 
+  /// Converts every expense belonging to a trip
+  /// from one currency to another.
+  ///
+  /// This changes the stored expense amounts.
+  Future<void> convertExpensesCurrency({
+    required String tripId,
+    required double exchangeRate,
+  }) async {
+    final expenses = await loadExpenses(tripId);
+
+    if (expenses.isEmpty) {
+      return;
+    }
+
+    final convertedExpenses = expenses.map((expense) {
+      final convertedDailyAmounts = <DateTime, double>{};
+
+      for (final entry in expense.dailyAmounts.entries) {
+        convertedDailyAmounts[entry.key] = entry.value * exchangeRate;
+      }
+
+      return Expense(
+        tripId: expense.tripId,
+        category: expense.category,
+        description: expense.description,
+        dailyAmounts: convertedDailyAmounts,
+        icon: expense.icon,
+      );
+    }).toList();
+
+    await saveExpenses(tripId, convertedExpenses);
+  }
+
   Future<void> deleteExpenses(String tripId) async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.remove(_key(tripId, 'descriptions'));
+
     await prefs.remove(_key(tripId, 'categories'));
+
     await prefs.remove(_key(tripId, 'amounts'));
+
     await prefs.remove(_key(tripId, 'dates'));
   }
 
   static IconData getIcon(String category) {
-    switch (category) {
-      case 'Food':
-        return Icons.restaurant;
-      case 'Transportation':
-        return Icons.train;
-      case 'Shopping':
-        return Icons.shopping_bag;
-      default:
-        return Icons.receipt;
-    }
+    return ExpenseCategories.getIcon(category);
   }
 }

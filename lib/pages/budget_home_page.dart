@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 
 import 'expense_history_page.dart';
+import 'statistics_page.dart';
 import 'trip_list_page.dart';
+import 'about_page.dart';
 import '../models/expense.dart';
 import '../models/trip.dart';
 import '../widgets/expense_item.dart';
 import '../widgets/summary_card.dart';
 import '../services/expense_storage_service.dart';
+import '../services/currency_service.dart';
+import '../services/theme_mode_service.dart';
+import '../constants/expense_categories.dart';
 
 class BudgetHomePage extends StatefulWidget {
   final Trip trip;
@@ -19,22 +24,106 @@ class BudgetHomePage extends StatefulWidget {
 
 class _BudgetHomePageState extends State<BudgetHomePage> {
   late Trip trip;
+
   List<Expense> expenses = [];
+
+  late String _displayCurrency;
+
+  double _exchangeRate = 1.0;
+
+  bool _isConverting = false;
 
   @override
   void initState() {
     super.initState();
 
     trip = widget.trip;
+    _displayCurrency = trip.currencyCode;
 
     _loadExpenses();
   }
 
+  Future<void> _showAppearancePicker() async {
+    final selectedMode = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final currentMode = ThemeModeService.mode.value;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Appearance',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Choose how Trip Budget looks.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                ),
+
+                ...ThemeMode.values.map((themeMode) {
+                  final isSelected = themeMode == currentMode;
+
+                  return ListTile(
+                    leading: Icon(ThemeModeService.getModeIcon(themeMode)),
+                    title: Text(ThemeModeService.getModeName(themeMode)),
+                    trailing: isSelected
+                        ? Icon(
+                            Icons.check_circle,
+                            color: Theme.of(context).colorScheme.primary,
+                          )
+                        : null,
+                    selected: isSelected,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context, themeMode);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selectedMode == null || !mounted) {
+      return;
+    }
+
+    await ThemeModeService.setMode(selectedMode);
+  }
+
   Future<void> _loadExpenses() async {
     final storage = ExpenseStorageService();
+
     final loadedExpenses = await storage.loadExpenses(trip.id);
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       expenses = loadedExpenses;
@@ -43,23 +132,57 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   Future<void> _saveExpenses() async {
     final storage = ExpenseStorageService();
+
     await storage.saveExpenses(trip.id, expenses);
   }
 
-  DateTime _dateOnly(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
+  double _convertAmount(double amount) {
+    return amount * _exchangeRate;
   }
 
-  DateTime get today {
-    return _dateOnly(DateTime.now());
+  String _formatAmount(double amount) {
+    return CurrencyService.format(_convertAmount(amount), _displayCurrency);
   }
 
-  DateTime get tripStart {
-    return _dateOnly(trip.startDate);
-  }
+  Future<void> _changeDisplayCurrency(String currencyCode) async {
+    if (currencyCode == _displayCurrency) {
+      return;
+    }
 
-  DateTime get tripEnd {
-    return _dateOnly(trip.endDate);
+    setState(() {
+      _isConverting = true;
+    });
+
+    try {
+      final rate = await CurrencyService.getExchangeRate(
+        trip.currencyCode,
+        currencyCode,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _displayCurrency = currencyCode;
+        _exchangeRate = rate;
+        _isConverting = false;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isConverting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to get the latest exchange rate.'),
+        ),
+      );
+    }
   }
 
   double get totalSpent {
@@ -70,28 +193,46 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     return trip.allowance - totalSpent;
   }
 
-  int get remainingDays {
-    if (today.isBefore(tripStart)) {
-      return trip.totalDays;
-    }
-
-    if (today.isAfter(tripEnd)) {
-      return 0;
-    }
-
-    return tripEnd.difference(today).inDays + 1;
+  DateTime get _todayDate {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
   }
 
-  int get elapsedTripDays {
-    if (today.isBefore(tripStart)) {
+  DateTime get _tripStartDate {
+    return DateTime(
+      trip.startDate.year,
+      trip.startDate.month,
+      trip.startDate.day,
+    );
+  }
+
+  DateTime get _tripEndDate {
+    return DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day);
+  }
+
+  int get elapsedDays {
+    if (_todayDate.isBefore(_tripStartDate)) {
       return 0;
     }
 
-    if (today.isAfter(tripEnd)) {
+    if (_todayDate.isAfter(_tripEndDate)) {
       return trip.totalDays;
     }
 
-    return today.difference(tripStart).inDays + 1;
+    return _todayDate.difference(_tripStartDate).inDays + 1;
+  }
+
+  int get remainingDays {
+    if (_todayDate.isBefore(_tripStartDate)) {
+      return trip.totalDays;
+    }
+
+    if (_todayDate.isAfter(_tripEndDate)) {
+      return 0;
+    }
+
+    // Today is included because it is still available for spending.
+    return _tripEndDate.difference(_todayDate).inDays + 1;
   }
 
   double get recommendedDailyBudget {
@@ -100,73 +241,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     }
 
     return remainingBudget / remainingDays;
-  }
-
-  List<Expense> get todaysExpenses {
-    return expenses.where((expense) {
-      final amount = expense.dailyAmounts[today] ?? 0;
-
-      return amount > 0;
-    }).toList();
-  }
-
-  double get todaysSpending {
-    return expenses.fold(
-      0,
-      (sum, expense) => sum + (expense.dailyAmounts[today] ?? 0),
-    );
-  }
-
-  double get dailyBudgetDifference {
-    return recommendedDailyBudget - todaysSpending;
-  }
-
-  double get actualSpendingUntilToday {
-    return expenses.fold(0, (sum, expense) {
-      double expenseTotal = 0;
-
-      for (final entry in expense.dailyAmounts.entries) {
-        final date = _dateOnly(entry.key);
-
-        if (!date.isAfter(today)) {
-          expenseTotal += entry.value;
-        }
-      }
-
-      return sum + expenseTotal;
-    });
-  }
-
-  double get averageDailySpending {
-    if (elapsedTripDays <= 0) {
-      return 0;
-    }
-
-    return actualSpendingUntilToday / elapsedTripDays;
-  }
-
-  double get projectedTotalSpending {
-    if (elapsedTripDays <= 0) {
-      return 0;
-    }
-
-    return averageDailySpending * trip.totalDays;
-  }
-
-  double get projectedRemainingBudget {
-    return trip.allowance - projectedTotalSpending;
-  }
-
-  String get dailyBudgetStatus {
-    if (todaysSpending == 0) {
-      return 'No spending today';
-    }
-
-    if (dailyBudgetDifference >= 0) {
-      return 'Within daily budget';
-    }
-
-    return 'Over daily budget';
   }
 
   Future<void> _addExpense() async {
@@ -189,25 +263,698 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  List<Expense> get todaysExpenses {
+    final today = DateTime.now();
+
+    return expenses
+        .where((expense) {
+          return expense.dailyAmounts.keys.any((date) {
+            return date.year == today.year &&
+                date.month == today.month &&
+                date.day == today.day;
+          });
+        })
+        .toList()
+        .reversed
+        .toList();
+  }
+
+  double get todaysSpending {
+    final today = DateTime.now();
+
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    return expenses.fold(
+      0,
+      (sum, expense) => sum + (expense.dailyAmounts[todayDate] ?? 0),
+    );
+  }
+
+  double get dailyBudgetDifference {
+    return recommendedDailyBudget - todaysSpending;
+  }
+
+  double get averageDailySpending {
+    if (totalSpent == 0 || elapsedDays <= 0) {
+      return 0;
+    }
+
+    return totalSpent / elapsedDays;
+  }
+
+  double get projectedTotalSpending {
+    if (elapsedDays <= 0) {
+      return 0;
+    }
+
+    // Once the trip has ended, use the actual total instead of
+    // extrapolating from an extra day.
+    if (elapsedDays >= trip.totalDays) {
+      return totalSpent;
+    }
+
+    return averageDailySpending * trip.totalDays;
+  }
+
+  double get projectedRemainingBudget {
+    return trip.allowance - projectedTotalSpending;
+  }
+
+  String get dailyBudgetStatus {
+    if (todaysSpending == 0) {
+      return 'No spending today';
+    }
+
+    if (dailyBudgetDifference >= 0) {
+      return 'Within daily budget';
+    }
+
+    return 'Over daily budget';
   }
 
   Future<void> _openExpenseHistory() async {
     final updatedExpenses = await Navigator.push<List<Expense>>(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            ExpenseHistoryPage(tripId: trip.id, expenses: expenses),
+        builder: (context) {
+          return ExpenseHistoryPage(
+            tripId: trip.id,
+            tripCurrencyCode: trip.currencyCode,
+            displayCurrencyCode: _displayCurrency,
+            exchangeRate: _exchangeRate,
+            expenses: expenses,
+          );
+        },
       ),
     );
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     if (updatedExpenses != null) {
       setState(() {
         expenses = updatedExpenses;
       });
     }
+  }
+
+  Future<void> _openStatistics() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return StatisticsPage(
+            trip: trip,
+            expenses: expenses,
+            displayCurrencyCode: _displayCurrency,
+            exchangeRate: _exchangeRate,
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openPlanner() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return StatisticsPage(
+            trip: trip,
+            expenses: expenses,
+            displayCurrencyCode: _displayCurrency,
+            exchangeRate: _exchangeRate,
+            initialTabIndex: 5,
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showCurrencyPicker() async {
+    if (_isConverting) {
+      return;
+    }
+
+    final selectedCurrency = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 16),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Text(
+                  'Display Currency',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Text(
+                  'Choose how amounts are displayed. '
+                  'Your trip and expense data will not be changed.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ...CurrencyService.supportedCurrencies.map((currency) {
+                final isSelected = currency == _displayCurrency;
+
+                return ListTile(
+                  leading: CircleAvatar(child: Text(currency.substring(0, 1))),
+                  title: Text(currency),
+                  subtitle: Text(CurrencyService.getSymbol(currency)),
+                  trailing: isSelected
+                      ? Icon(
+                          Icons.check_circle,
+                          color: Theme.of(context).colorScheme.primary,
+                        )
+                      : null,
+                  selected: isSelected,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context, currency);
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selectedCurrency == null || !mounted) {
+      return;
+    }
+
+    await _changeDisplayCurrency(selectedCurrency);
+  }
+
+  Widget _buildCurrencySelector() {
+    final symbol = CurrencyService.getSymbol(_displayCurrency);
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Material(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: _showCurrencyPicker,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isConverting)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Icon(
+                    Icons.currency_exchange,
+                    size: 17,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                const SizedBox(width: 7),
+                Text(
+                  '$_displayCurrency ($symbol)',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                const Icon(Icons.keyboard_arrow_down, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTripHeader() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    size: 15,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      '${_formatDate(trip.startDate)} → '
+                      '${_formatDate(trip.endDate)}',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.timelapse, size: 15, color: Colors.grey.shade600),
+                  const SizedBox(width: 6),
+                  Text(
+                    '$remainingDays days remaining',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        _buildCurrencySelector(),
+      ],
+    );
+  }
+
+  Widget _buildRemainingBudgetCard() {
+    final isOverBudget = remainingBudget < 0;
+
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Theme.of(context).colorScheme.primaryContainer,
+              Theme.of(context).colorScheme.surfaceContainerHighest,
+            ],
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isOverBudget
+                      ? Icons.warning_amber_rounded
+                      : Icons.account_balance_wallet_outlined,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isOverBudget ? 'Over Budget' : 'Remaining Budget',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _formatAmount(
+                isOverBudget ? remainingBudget.abs() : remainingBudget,
+              ),
+              style: const TextStyle(
+                fontSize: 38,
+                fontWeight: FontWeight.bold,
+                letterSpacing: -1,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isOverBudget
+                  ? 'You have exceeded your trip allowance.'
+                  : 'Available for the remaining $remainingDays '
+                        '${remainingDays == 1 ? 'day' : 'days'}.',
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDailyBudgetCard() {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.today_outlined,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Recommended Daily Budget',
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatAmount(recommendedDailyBudget),
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForecastCard() {
+    final projectedRemaining = projectedRemainingBudget;
+    final isOverBudget = projectedRemaining < 0;
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.insights_outlined,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Spending Forecast',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildForecastMetric(
+                    label: 'Projected spending',
+                    value: _formatAmount(projectedTotalSpending),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildForecastMetric(
+                    label: isOverBudget
+                        ? 'Projected over'
+                        : 'Projected remaining',
+                    value: _formatAmount(projectedRemaining.abs()),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForecastMetric({required String label, required String value}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTodaySection() {
+    final isWithinBudget = dailyBudgetDifference >= 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Expanded(
+              child: Text(
+                "Today's Spending",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            TextButton(
+              onPressed: _openExpenseHistory,
+              child: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${_formatAmount(todaysSpending)} spent today',
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 0,
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+            decoration: BoxDecoration(
+              color: isWithinBudget
+                  ? Theme.of(context).colorScheme.primaryContainer
+                        .withValues(alpha: 0.45)
+                  : Theme.of(context).colorScheme.errorContainer
+                        .withValues(alpha: 0.55),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: isWithinBudget
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).colorScheme.errorContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isWithinBudget
+                        ? Icons.check_rounded
+                        : Icons.warning_amber_rounded,
+                    size: 27,
+                    color: isWithinBudget
+                        ? Theme.of(context).colorScheme.onPrimaryContainer
+                        : Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                ),
+
+                const SizedBox(width: 16),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dailyBudgetStatus,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      Text(
+                        dailyBudgetDifference >= 0
+                            ? '${_formatAmount(dailyBudgetDifference)} '
+                                  'remaining for today'
+                            : '${_formatAmount(dailyBudgetDifference.abs())} '
+                                  'over today\'s budget',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (todaysExpenses.isEmpty)
+          _buildEmptyTodayState()
+        else
+          ...todaysExpenses.map((expense) {
+            final today = DateTime.now();
+
+            final todayDate = DateTime(today.year, today.month, today.day);
+
+            final amount = expense.dailyAmounts[todayDate] ?? 0;
+
+            return ExpenseItem(
+              category: expense.category,
+              description: expense.description,
+              amount: _convertAmount(amount),
+              icon: expense.icon,
+              date: _formatDate(todayDate),
+              currencyCode: _displayCurrency,
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _buildEmptyTodayState() {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(
+                Icons.receipt_long_outlined,
+                size: 34,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'No expenses today',
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Your spending will appear here.',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryCards() {
+    return Row(
+      children: [
+        Expanded(
+          child: SummaryCard(
+            title: 'Allowance',
+            value: _formatAmount(trip.allowance),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SummaryCard(title: 'Spent', value: _formatAmount(totalSpent)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlannerShortcutCard() {
+    return Card(
+      elevation: 0,
+      child: InkWell(
+        onTap: _openPlanner,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.savings_rounded,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Plan My Budget',
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Set a savings goal and daily spending limit.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -217,219 +964,103 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         title: Text(trip.name),
         actions: [
           IconButton(
-            icon: const Icon(Icons.folder_copy_outlined),
-            tooltip: 'My Trips',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const TripListPage()),
-              );
-            },
+            icon: const Icon(Icons.bar_chart_rounded),
+            tooltip: 'Statistics',
+            onPressed: _openStatistics,
           ),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            offset: const Offset(0, 48),
+            onSelected: (value) {
+              switch (value) {
+                case 'my_trips':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TripListPage(),
+                    ),
+                  );
+                  break;
+
+                case 'appearance':
+                  _showAppearancePicker();
+                  break;
+
+                case 'about':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AboutPage()),
+                  );
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'my_trips',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.folder_copy_outlined),
+                  title: Text('My Trips'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'appearance',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.brightness_6_outlined),
+                  title: Text('Appearance'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'about',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.info_outline),
+                  title: Text('About Trip Budget'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
+      body: RefreshIndicator(
+        onRefresh: _loadExpenses,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTripHeader(),
 
-            Text(
-              '${_formatDate(trip.startDate)} → ${_formatDate(trip.endDate)}',
-              style: const TextStyle(color: Colors.grey, fontSize: 14),
-            ),
+              const SizedBox(height: 18),
 
-            const SizedBox(height: 4),
+              _buildRemainingBudgetCard(),
 
-            Text(
-              '$remainingDays days remaining',
-              style: const TextStyle(color: Colors.grey, fontSize: 14),
-            ),
+              const SizedBox(height: 12),
 
-            const SizedBox(height: 24),
+              _buildPlannerShortcutCard(),
 
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Remaining Budget',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
+              const SizedBox(height: 12),
 
-                    const SizedBox(height: 8),
+              _buildDailyBudgetCard(),
 
-                    Text(
-                      '¥${remainingBudget.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+              const SizedBox(height: 12),
 
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Recommended Daily Budget',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
+              _buildSummaryCards(),
 
-                    const SizedBox(height: 8),
+              const SizedBox(height: 12),
 
-                    Text(
-                      '¥${recommendedDailyBudget.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+              _buildForecastCard(),
 
-                    const SizedBox(height: 4),
+              const SizedBox(height: 28),
 
-                    const Text(
-                      'Based on your remaining budget and trip days',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Spending Forecast',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    Text(
-                      '¥${projectedTotalSpending.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    const Text(
-                      'Projected total spending',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Text(
-                      projectedRemainingBudget >= 0
-                          ? 'Projected remaining: ¥${projectedRemainingBudget.toStringAsFixed(0)}'
-                          : 'Projected over budget: ¥${projectedRemainingBudget.abs().toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: SummaryCard(
-                    title: 'Allowance',
-                    value: '¥${trip.allowance.toStringAsFixed(0)}',
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                Expanded(
-                  child: SummaryCard(
-                    title: 'Spent',
-                    value: '¥${totalSpent.toStringAsFixed(0)}',
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Today's Spending",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-
-                TextButton(
-                  onPressed: _openExpenseHistory,
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 4),
-
-            Text(
-              '¥${todaysSpending.toStringAsFixed(0)} spent today',
-              style: const TextStyle(color: Colors.grey),
-            ),
-
-            const SizedBox(height: 4),
-
-            Text(
-              dailyBudgetStatus,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-
-            Text(
-              dailyBudgetDifference >= 0
-                  ? '¥${dailyBudgetDifference.toStringAsFixed(0)} remaining for today'
-                  : '¥${dailyBudgetDifference.abs().toStringAsFixed(0)} over today\'s budget',
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-
-            const SizedBox(height: 12),
-
-            if (todaysExpenses.isEmpty)
-              const Text(
-                'No expenses today.',
-                style: TextStyle(color: Colors.grey),
-              ),
-
-            ...todaysExpenses.map((expense) {
-              final amount = expense.dailyAmounts[today] ?? 0;
-
-              return ExpenseItem(
-                category: expense.category,
-                description: expense.description,
-                amount: amount,
-                icon: expense.icon,
-                date: _formatDate(today),
-              );
-            }),
-          ],
+              _buildTodaySection(),
+            ],
+          ),
         ),
       ),
-
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addExpense,
         icon: const Icon(Icons.add),
@@ -450,6 +1081,7 @@ class AddExpenseDialog extends StatefulWidget {
 
 class _AddExpenseDialogState extends State<AddExpenseDialog> {
   late final TextEditingController _descriptionController;
+
   late final TextEditingController _amountController;
 
   String _selectedCategory = 'Food';
@@ -470,6 +1102,7 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
     super.initState();
 
     _descriptionController = TextEditingController();
+
     _amountController = TextEditingController();
 
     final today = DateTime.now();
@@ -506,7 +1139,9 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return '${date.year}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
   }
 
   String _dateText() {
@@ -518,7 +1153,8 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
       return 'Select date range';
     }
 
-    return '${_formatDate(_rangeStart!)} → ${_formatDate(_rangeEnd!)}';
+    return '${_formatDate(_rangeStart!)} → '
+        '${_formatDate(_rangeEnd!)}';
   }
 
   Future<void> _selectDate() async {
@@ -654,28 +1290,40 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final currencySymbol = CurrencyService.getSymbol(widget.trip.currencyCode);
+
     return AlertDialog(
       title: const Text('Add Expense'),
-
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
               initialValue: _selectedCategory,
-
               decoration: const InputDecoration(labelText: 'Category'),
-
-              items: const [
-                DropdownMenuItem(value: 'Food', child: Text('Food')),
-                DropdownMenuItem(
-                  value: 'Transportation',
-                  child: Text('Transportation'),
-                ),
-                DropdownMenuItem(value: 'Shopping', child: Text('Shopping')),
-                DropdownMenuItem(value: 'Other', child: Text('Other')),
-              ],
-
+              items: ExpenseCategories.all.map((category) {
+                return DropdownMenuItem<String>(
+                  value: category.name,
+                  child: Row(
+                    children: [
+                      Icon(category.icon, size: 22),
+                      const SizedBox(width: 12),
+                      Text(category.name),
+                    ],
+                  ),
+                );
+              }).toList(),
+              selectedItemBuilder: (context) {
+                return ExpenseCategories.all.map((category) {
+                  return Row(
+                    children: [
+                      Icon(category.icon, size: 22),
+                      const SizedBox(width: 12),
+                      Text(category.name),
+                    ],
+                  );
+                }).toList();
+              },
               onChanged: (value) {
                 if (value == null) {
                   return;
@@ -687,57 +1335,61 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
               },
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             TextField(
               controller: _descriptionController,
-
+              textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
                 labelText: 'Description',
+                hintText: 'What did you spend on?',
+                prefixIcon: const Icon(Icons.receipt_long_outlined),
                 errorText: _descriptionError,
+                border: const OutlineInputBorder(),
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             TextField(
               controller: _amountController,
-
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-
               decoration: InputDecoration(
                 labelText: 'Amount',
-                prefixText: '¥ ',
+                hintText: '0.00',
+                prefixIcon: const Icon(Icons.payments_outlined),
+                prefixText: '$currencySymbol ',
                 errorText: _amountError,
+                border: const OutlineInputBorder(),
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-
-              leading: const Icon(Icons.calendar_today),
-
-              title: const Text('Date'),
-
-              subtitle: Text(_dateText()),
-
-              onTap: _selectDate,
+            Card(
+              elevation: 0,
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
+                leading: const Icon(Icons.calendar_today_outlined),
+                title: const Text('Date'),
+                subtitle: Text(_dateText()),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _selectDate,
+              ),
             ),
 
             if (_dateError != null)
               Align(
                 alignment: Alignment.centerLeft,
-
                 child: Padding(
                   padding: const EdgeInsets.only(left: 16, bottom: 8),
-
                   child: Text(
                     _dateError!,
-
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
                       fontSize: 12,
@@ -748,15 +1400,12 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
-
               title: const Text('Spread across days'),
-
               subtitle: const Text(
-                'Divide the expense equally across the selected dates',
+                'Divide the expense equally '
+                'across the selected dates',
               ),
-
               value: _spreadAcrossDays,
-
               onChanged: (value) {
                 if (value == null) {
                   return;
@@ -764,7 +1413,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
 
                 setState(() {
                   _spreadAcrossDays = value;
-
                   _dateError = null;
 
                   if (value) {
@@ -780,7 +1428,6 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
           ],
         ),
       ),
-
       actions: [
         TextButton(
           onPressed: () {
@@ -788,8 +1435,11 @@ class _AddExpenseDialogState extends State<AddExpenseDialog> {
           },
           child: const Text('Cancel'),
         ),
-
-        FilledButton(onPressed: _save, child: const Text('Add')),
+        FilledButton.icon(
+          onPressed: _save,
+          icon: const Icon(Icons.add),
+          label: const Text('Add Expense'),
+        ),
       ],
     );
   }

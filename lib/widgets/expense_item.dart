@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../services/currency_service.dart';
+
 class ExpenseItem extends StatelessWidget {
   final String category;
   final String description;
   final double amount;
   final IconData icon;
   final String date;
+  final String currencyCode;
 
   const ExpenseItem({
     super.key,
@@ -14,6 +17,7 @@ class ExpenseItem extends StatelessWidget {
     required this.amount,
     required this.icon,
     required this.date,
+    required this.currencyCode,
   });
 
   @override
@@ -25,7 +29,7 @@ class ExpenseItem extends StatelessWidget {
         title: Text(description),
         subtitle: Text('$category • $date'),
         trailing: Text(
-          '¥${amount.toStringAsFixed(0)}',
+          CurrencyService.format(amount, currencyCode),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
