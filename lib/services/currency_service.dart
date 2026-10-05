@@ -49,7 +49,6 @@ class CurrencyService {
 
   static String format(double amount, String currencyCode) {
     final symbol = getSymbol(currencyCode);
-
     return '$symbol${amount.toStringAsFixed(0)}';
   }
 
@@ -61,49 +60,81 @@ class CurrencyService {
     return currencyNames.keys.toList();
   }
 
-  /// Gets the latest exchange rate from [fromCurrency] to [toCurrency].
-  ///
-  /// Example:
-  /// JPY -> PHP
-  /// returns the number of PHP received for 1 JPY.
   static Future<double> getExchangeRate(
     String fromCurrency,
     String toCurrency,
   ) async {
-    if (fromCurrency == toCurrency) {
+    final from = fromCurrency.trim().toUpperCase();
+    final to = toCurrency.trim().toUpperCase();
+
+    if (from.isEmpty || to.isEmpty) {
+      throw Exception('Currency code cannot be empty.');
+    }
+
+    if (from == to) {
       return 1.0;
     }
 
-    final uri = Uri.parse(
-      'https://api.frankfurter.dev/v2/rate/'
-      '${fromCurrency.toLowerCase()}/'
-      '${toCurrency.toLowerCase()}',
+    final uri = Uri.https(
+      'api.frankfurter.dev',
+      '/v2/rate/${from.toLowerCase()}/${to.toLowerCase()}',
     );
 
-    final response = await http.get(uri);
+    final response = await http.get(
+      uri,
+      headers: const {'Accept': 'application/json'},
+    );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to get exchange rate: ${response.statusCode}');
+      String message = 'HTTP ${response.statusCode}';
+
+      try {
+        final errorData = jsonDecode(response.body);
+
+        if (errorData is Map<String, dynamic> &&
+            errorData['message'] is String) {
+          message = errorData['message'] as String;
+        }
+      } catch (_) {
+        // Keep the HTTP status as the error message.
+      }
+
+      throw Exception('Exchange rate request failed: $message');
     }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final decoded = jsonDecode(response.body);
 
-    final rate = data['rate'];
-
-    if (rate is num) {
-      return rate.toDouble();
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Invalid exchange rate response.');
     }
 
-    throw Exception('Invalid exchange rate response.');
+    final base = decoded['base'];
+    final quote = decoded['quote'];
+    final rate = decoded['rate'];
+
+    if (base is! String || quote is! String || rate is! num) {
+      throw Exception('Invalid exchange rate response.');
+    }
+
+    if (base.toUpperCase() != from || quote.toUpperCase() != to) {
+      throw Exception('Unexpected currency pair returned by the API.');
+    }
+
+    final exchangeRate = rate.toDouble();
+
+    if (!exchangeRate.isFinite || exchangeRate <= 0) {
+      throw Exception('Invalid exchange rate value.');
+    }
+
+    return exchangeRate;
   }
 
-  /// Converts an amount from one currency to another.
   static Future<double> convert({
     required double amount,
     required String fromCurrency,
     required String toCurrency,
   }) async {
-    if (fromCurrency == toCurrency) {
+    if (fromCurrency.toUpperCase() == toCurrency.toUpperCase()) {
       return amount;
     }
 
