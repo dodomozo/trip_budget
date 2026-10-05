@@ -67,6 +67,7 @@ class _StatisticsPageState extends State<StatisticsPage>
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: const [
             Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Overview'),
             Tab(icon: Icon(Icons.trending_up_rounded), text: 'Trend'),
