@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/expense.dart';
 import '../services/currency_service.dart';
 import '../services/expense_storage_service.dart';
+import '../services/trash_service.dart';
 import '../widgets/expense_item.dart';
 import '../constants/expense_categories.dart';
 
@@ -42,6 +43,7 @@ class ExpenseHistoryPage extends StatefulWidget {
 
 class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
   late List<Expense> expenses;
+  final TrashService _trashService = TrashService();
 
   @override
   void initState() {
@@ -187,40 +189,70 @@ class _ExpenseHistoryPageState extends State<ExpenseHistoryPage> {
       return;
     }
 
-    final updatedDailyAmounts = Map<DateTime, double>.from(
-      entry.expense.dailyAmounts,
-    );
+    // Save the original list so we can restore the UI if saving fails.
+    final originalExpenses = List<Expense>.from(expenses);
 
-    updatedDailyAmounts.remove(entry.date);
+    try {
+      // Step 1: Save only this date's portion to Trash first.
+      await _trashService.moveExpensePortionToTrash(
+        expense: entry.expense,
+        date: entry.date,
+        amount: entry.amount,
+      );
 
-    setState(() {
-      if (updatedDailyAmounts.isEmpty) {
-        expenses.removeAt(expenseIndex);
-      } else {
-        expenses[expenseIndex] = Expense(
-          tripId: entry.expense.tripId,
-          category: entry.expense.category,
-          description: entry.expense.description,
-          dailyAmounts: updatedDailyAmounts,
-          icon: entry.expense.icon,
+      // Step 2: Remove only the selected date from the active expense.
+      final updatedDailyAmounts = Map<DateTime, double>.from(
+        entry.expense.dailyAmounts,
+      );
+
+      updatedDailyAmounts.remove(entry.date);
+
+      setState(() {
+        if (updatedDailyAmounts.isEmpty) {
+          expenses.removeAt(expenseIndex);
+        } else {
+          expenses[expenseIndex] = Expense(
+            tripId: entry.expense.tripId,
+            category: entry.expense.category,
+            description: entry.expense.description,
+            dailyAmounts: updatedDailyAmounts,
+            icon: entry.expense.icon,
+          );
+        }
+      });
+
+      // Step 3: Persist the updated active expense list.
+      await _saveExpenses();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${entry.expense.description} on '
+            '${_formatDate(entry.date)} moved to Trash',
+          ),
+        ),
+      );
+    } catch (error) {
+      // Restore the original in-memory list if an operation fails.
+      if (mounted) {
+        setState(() {
+          expenses = originalExpenses;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to complete deletion. '
+              'Please check your data before trying again.',
+            ),
+          ),
         );
       }
-    });
-
-    await _saveExpenses();
-
-    if (!mounted) {
-      return;
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${entry.expense.description} on '
-          '${_formatDate(entry.date)} deleted',
-        ),
-      ),
-    );
   }
 
   Future<void> _editExpensePortion(_ExpenseDayEntry entry) async {

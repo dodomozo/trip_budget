@@ -5,9 +5,9 @@ import '../services/trip_storage_service.dart';
 import 'budget_home_page.dart';
 import 'add_trip_page.dart';
 import 'edit_trip_page.dart';
-import '../services/expense_storage_service.dart';
 import '../services/active_trip_service.dart';
 import '../services/currency_service.dart';
+import '../services/trash_service.dart';
 
 class TripListPage extends StatefulWidget {
   const TripListPage({super.key});
@@ -18,9 +18,8 @@ class TripListPage extends StatefulWidget {
 
 class _TripListPageState extends State<TripListPage> {
   final TripStorageService _tripStorageService = TripStorageService();
-
-  final ExpenseStorageService _expenseStorageService = ExpenseStorageService();
   final ActiveTripService _activeTripService = ActiveTripService();
+  final TrashService _trashService = TrashService();
   List<Trip> trips = [];
   bool isLoading = true;
 
@@ -44,46 +43,45 @@ class _TripListPageState extends State<TripListPage> {
   Future<void> _deleteTrip(Trip trip) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Delete Trip?'),
-          content: Text(
-            'Are you sure you want to delete "${trip.name}"?\n\n'
-            'All expenses belonging to this trip will also be deleted.',
+      builder: (context) => AlertDialog(
+        title: const Text('Move trip to Trash?'),
+        content: Text(
+          '“${trip.name}” and its expenses will be moved to Trash. '
+          'You can restore them later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Move to Trash'),
+          ),
+        ],
+      ),
     );
 
-    if (confirmed != true) {
-      return;
+    if (confirmed != true) return;
+
+    try {
+      await _trashService.moveTripToTrash(trip);
+
+      if (!mounted) return;
+
+      await _loadTrips();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('${trip.name} moved to Trash')));
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to move trip to Trash: $error')),
+      );
     }
-
-    await _expenseStorageService.deleteExpenses(trip.id);
-    await _tripStorageService.deleteTrip(trip.id);
-
-    if (!mounted) return;
-
-    await _loadTrips();
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('${trip.name} deleted')));
   }
 
   String _formatDate(DateTime date) {

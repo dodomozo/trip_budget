@@ -4,6 +4,7 @@ import 'expense_history_page.dart';
 import 'statistics_page.dart';
 import 'trip_list_page.dart';
 import 'about_page.dart';
+import 'trash_page.dart';
 import '../models/expense.dart';
 import '../models/trip.dart';
 import '../widgets/expense_item.dart';
@@ -986,6 +987,13 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   _showAppearancePicker();
                   break;
 
+                case 'trash':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const TrashPage()),
+                  ).then((_) => _loadExpenses());
+                  break;
+
                 case 'about':
                   Navigator.push(
                     context,
@@ -1009,6 +1017,14 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.brightness_6_outlined),
                   title: Text('Appearance'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'trash',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.delete_outline),
+                  title: Text('Trash'),
                 ),
               ),
               PopupMenuItem<String>(
