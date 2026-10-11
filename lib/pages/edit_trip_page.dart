@@ -4,6 +4,7 @@ import '../models/trip.dart';
 import '../services/trip_storage_service.dart';
 import '../services/currency_service.dart';
 import '../services/expense_storage_service.dart';
+import '../constants/countries.dart';
 
 class EditTripPage extends StatefulWidget {
   final Trip trip;
@@ -26,6 +27,7 @@ class _EditTripPageState extends State<EditTripPage> {
 
   late String _selectedCurrency;
   late final String _originalCurrency;
+  late String _selectedCountry;
 
   bool _isConverting = false;
 
@@ -69,6 +71,9 @@ class _EditTripPageState extends State<EditTripPage> {
 
     _selectedCurrency = widget.trip.currencyCode;
     _originalCurrency = widget.trip.currencyCode;
+    _selectedCountry = countries.containsKey(widget.trip.countryCode)
+        ? widget.trip.countryCode
+        : 'JP';
   }
 
   @override
@@ -276,6 +281,8 @@ class _EditTripPageState extends State<EditTripPage> {
       startDate: _startDate,
       endDate: _endDate,
       currencyCode: _selectedCurrency,
+      countryCode: _selectedCountry,
+      countryName: countries[_selectedCountry]!,
     );
 
     await _tripStorageService.saveTrip(updatedTrip);
@@ -310,6 +317,30 @@ class _EditTripPageState extends State<EditTripPage> {
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.work_outline),
             ),
+          ),
+
+          const SizedBox(height: 16),
+
+          DropdownButtonFormField<String>(
+            initialValue: _selectedCountry,
+            decoration: const InputDecoration(
+              labelText: 'Country',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.public),
+            ),
+            items: countries.entries.map((entry) {
+              return DropdownMenuItem<String>(
+                value: entry.key,
+                child: Text('${countryFlag(entry.key)} ${entry.value}'),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                _selectedCountry = value;
+              });
+            },
           ),
 
           const SizedBox(height: 16),

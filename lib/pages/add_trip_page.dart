@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/trip.dart';
 import '../services/trip_storage_service.dart';
+import '../constants/countries.dart';
 
 class AddTripPage extends StatefulWidget {
   const AddTripPage({super.key});
@@ -21,6 +22,7 @@ class _AddTripPageState extends State<AddTripPage> {
   DateTime? _endDate;
 
   String _selectedCurrency = 'JPY';
+  String _selectedCountry = 'JP';
 
   // Currency code -> currency name
   static const Map<String, String> _currencies = {
@@ -151,6 +153,8 @@ class _AddTripPageState extends State<AddTripPage> {
       startDate: _startDate!,
       endDate: _endDate!,
       currencyCode: _selectedCurrency,
+      countryCode: _selectedCountry,
+      countryName: countries[_selectedCountry]!,
     );
 
     await _tripStorageService.saveTrip(trip);
@@ -188,6 +192,30 @@ class _AddTripPageState extends State<AddTripPage> {
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.work_outline),
             ),
+          ),
+
+          const SizedBox(height: 16),
+
+          DropdownButtonFormField<String>(
+            initialValue: _selectedCountry,
+            decoration: const InputDecoration(
+              labelText: 'Country',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.public),
+            ),
+            items: countries.entries.map((entry) {
+              return DropdownMenuItem<String>(
+                value: entry.key,
+                child: Text('${countryFlag(entry.key)} ${entry.value}'),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                _selectedCountry = value;
+              });
+            },
           ),
 
           const SizedBox(height: 16),

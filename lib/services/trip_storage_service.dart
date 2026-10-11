@@ -36,6 +36,8 @@ class TripStorageService {
 
     // Save the currency belonging to this trip.
     await prefs.setString(_key(trip.id, 'currency_code'), trip.currencyCode);
+    await prefs.setString('trip_${trip.id}_country_code', trip.countryCode);
+    await prefs.setString('trip_${trip.id}_country_name', trip.countryName);
   }
 
   Future<List<Trip>> loadTrips() async {
@@ -74,6 +76,9 @@ class TripStorageService {
           startDate: DateTime.parse(startDateString),
           endDate: DateTime.parse(endDateString),
           currencyCode: currencyCode,
+          countryCode: prefs.getString('trip_${tripId}_country_code') ?? 'JP',
+          countryName:
+              prefs.getString('trip_${tripId}_country_name') ?? 'Japan',
         ),
       );
     }
@@ -109,6 +114,8 @@ class TripStorageService {
       startDate: DateTime.parse(startDateString),
       endDate: DateTime.parse(endDateString),
       currencyCode: currencyCode,
+      countryCode: prefs.getString('trip_${tripId}_country_code') ?? 'JP',
+      countryName: prefs.getString('trip_${tripId}_country_name') ?? 'Japan',
     );
   }
 
